@@ -45,7 +45,7 @@ function renderRooms(rooms){const list=$('roomList');if(!rooms.length){list.inne
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function renderRoom(room){
  show('roomScreen');$('roomTitle').textContent=room.name.toUpperCase();$('roomMeta').textContent=room.players.length+' / '+room.maxPlayers+' OPERATORS · '+room.status.toUpperCase();
- const me=room.players.find(p=>p.id===user.id);selectedCharacter=me?.character||selectedCharacter;selectedTeam=me?.team||selectedTeam;isReady=!!me?.ready;
+ const me=room.players.find(p=>p.id===user.id);selectedCharacter=me?.character||null;selectedTeam=me?.team||null;isReady=!!me?.ready;
  const occupied=new Set(room.players.filter(p=>p.id!==user.id).map(p=>p.character));
  $('characterGrid').innerHTML=characters.map(c=>'<button class="character-card '+(selectedCharacter===c.id?'selected ':'')+(occupied.has(c.id)?'occupied':'')+'" data-char="'+c.id+'" '+(!c.unlocked||occupied.has(c.id)?'disabled':'')+'><div class="character-art" style="--c:'+c.color+'"></div><strong>'+c.name+'</strong><small>'+(occupied.has(c.id)?'IN USE':c.unlocked?'AVAILABLE':'🔒 LOCKED')+'</small></button>').join('');
  $('characterGrid').querySelectorAll('[data-char]').forEach(b=>b.onclick=()=>socket.emit('player:character',b.dataset.char,res=>{if(!res.ok)message('roomMessage',res.error);else message('roomMessage','Operator selected.',true);}));
