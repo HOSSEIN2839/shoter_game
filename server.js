@@ -68,7 +68,7 @@ const CHARACTERS = Array.from({ length: 15 }, (_, i) => ({
   id: 'operator-' + String(i + 1).padStart(2, '0'),
   name: ['Vanguard','Ranger','Nomad','Phantom','Sentinel','Raptor','Ghost','Falcon','Titan','Warden','Striker','Reaper','Scout','Onyx','Atlas'][i],
   color: ['#d1a46b','#7b9a70','#c28b62','#777d91','#9caa9b','#bb7659','#788aa8','#a7a06c','#a67b65','#718e86','#b58c57','#8b6f7e','#7291a0','#777777','#a0a0a0'][i],
-  unlocked: i < 5
+  unlocked: true
 }));
 const WEAPONS = {
   rifle: { name:'Assault Rifle', damage:24, rpm:600, range:55, magazine:30, reloadMs:1800, automatic:true },
@@ -120,6 +120,7 @@ io.on('connection', socket => {
   socket.emit('weapons:list', WEAPONS);
   socket.emit('rooms:update', [...rooms.values()].filter(r=>r.status==='waiting').map(r=>({id:r.id,name:r.name,players:r.players.size,maxPlayers:r.maxPlayers,host:r.players.get(r.hostId)?.username||'Host'})));
 
+  socket.on('rooms:refresh',()=>socket.emit('rooms:update',[...rooms.values()].filter(r=>r.status==='waiting').map(r=>({id:r.id,name:r.name,players:r.players.size,maxPlayers:r.maxPlayers,host:r.players.get(r.hostId)?.username||'Host'}))));
   socket.on('room:create', (payload={}, ack=()=>{}) => {
     releasePlayer(socket);
     const id = Math.random().toString(36).slice(2,8).toUpperCase();
@@ -153,7 +154,7 @@ io.on('connection', socket => {
     if(!room||room.status!=='waiting'||!['blue','red'].includes(team)) return ack({ok:false,error:'Team cannot be changed.'});
     const count=[...room.players.values()].filter(p=>p.team===team&&p.id!==user.id).length;
     const other=[...room.players.values()].filter(p=>p.team!==team&&p.id!==user.id).length;
-    if(count>=Math.ceil(room.maxPlayers/2) || count>other) return ack({ok:false,error:'That team is full. Choose the other team.'});
+    if(count>=Math.ceil(room.maxPlayers/2)) return ack({ok:false,error:'That team is full. Choose the other team.'});
     player.team=team; player.ready=false; ack({ok:true}); broadcastRoom(room);
   });
   socket.on('player:ready',(ready,ack=()=>{})=>{
@@ -203,7 +204,7 @@ io.on('connection', socket => {
     let target=null,best=weapon.range;
     for(const p of room.players.values()){
       if(p.team===shooter.team||p.health<=0)continue;
-      const dx=p.x-shooter.x,dy=1.1,dz=p.z-shooter.z;
+      const dx=p.x-shooter.x,dy=-0.55,dz=p.z-shooter.z;
       const along=dx*dir.x+dy*dir.y+dz*dir.z;
       if(along<=0||along>weapon.range)continue;
       const perpendicular=Math.sqrt(Math.max(0,dx*dx+dy*dy+dz*dz-along*along));
