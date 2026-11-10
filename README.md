@@ -59,6 +59,7 @@ Recent improvements:
 - GitHub Actions syntax, HTTP/authentication and two-player Socket.IO smoke tests (room creation/join, character exclusivity, team balance, ready/start, firing/reload, private profile/stats API and server-side aim validation).
 - Verified `/api/me` session restoration, `/api/me/stats` and public leaderboard displayed in the lobby.
 - Live scoreboard overlay (hold Tab), remote-player interpolation, and client position correction after server collision/speed rejection.
+- Aim direction is checked against the last server-replicated yaw/pitch; yaw is normalized to avoid long-session drift.
 - Training arena detail additions are documented in `docs/ASSET_PIPELINE.md`.
 
 ## Run locally
