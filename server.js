@@ -92,6 +92,12 @@ const WEAPONS = {
   shotgun: { name:'Shotgun', damage:12, rpm:90, range:18, magazine:8, reloadMs:2200, automatic:false },
   pistol: { name:'Pistol', damage:20, rpm:300, range:32, magazine:12, reloadMs:1300, automatic:false }
 };
+const COLLIDERS = [
+  [-18,-16,8,5],[17,-15,7,6],[-18,16,7,5],[18,17,8,5],[0,-21,10,3],[0,21,10,3],
+  [-8,0,3,8],[8,0,3,8],[-25,0,3,3],[25,0,3,3],
+  [-11,-8,5.5,1.4],[11,8,5.5,1.4],[-12,9,5.5,1.4],[12,-9,5.5,1.4]
+];
+function isBlocked(x,z){return COLLIDERS.some(([cx,cz,w,d])=>Math.abs(x-cx)<w/2+.58&&Math.abs(z-cz)<d/2+.58);}
 const rooms = new Map();
 const socketsByUser = new Map();
 const now = () => Date.now();
@@ -209,7 +215,7 @@ io.on('connection', socket => {
     const x=Number(input.x),z=Number(input.z),yaw=Number(input.yaw);
     if(![x,z,yaw].every(Number.isFinite))return;
     const dt=Math.min(0.25,Math.max(.02,(now()-(p.lastMove||now()))/1000));
-    if(Math.abs(x)>31||Math.abs(z)>31||Math.abs(yaw)>1000)return;
+    if(Math.abs(x)>31||Math.abs(z)>31||Math.abs(yaw)>1000||isBlocked(x,z))return;
     const max=8.5*dt+0.55;
     const dist=Math.hypot(x-p.x,z-p.z);
     if(dist>max)return;
