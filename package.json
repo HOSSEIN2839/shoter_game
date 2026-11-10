@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "check": "node --check server.js && node --input-type=module --check < public/client.js"
+    "check": "node --check server.js && node --input-type=module --check < public/client.js",
+    "test:multiplayer": "node scripts/smoke-multiplayer.js"
   },
   "engines": {
     "node": ">=20"
@@ -19,5 +20,8 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.1"
   }
 }
