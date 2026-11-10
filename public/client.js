@@ -23,7 +23,7 @@ function connect(){
  socket.on('score:update',renderScores);
  socket.on('game:finished',showResults);
  socket.on('player:moved',data=>{const mesh=remoteMeshes.get(data.id);if(mesh){mesh.position.x=data.x;mesh.position.z=data.z;mesh.rotation.y=data.yaw;}});
- socket.on('player:respawn',data=>{if(data.id===user.id){localMesh.position.set(data.x,0,data.z);$('health').textContent='100';$('healthBar').style.width='100%';$('gameNotice').textContent='RESPAWNED · BACK IN ACTION';}else{const mesh=remoteMeshes.get(data.id);if(mesh){mesh.position.set(data.x,0,data.z);mesh.visible=true;}}});
+ socket.on('player:respawn',data=>{if(data.id===user.id){localMesh.position.set(data.x,0,data.z);localMesh.visible=true;$('health').textContent='100';$('healthBar').style.width='100%';$('gameNotice').textContent='RESPAWNED · BACK IN ACTION';}else{const mesh=remoteMeshes.get(data.id);if(mesh){mesh.position.set(data.x,0,data.z);mesh.visible=true;}}});
  socket.on('combat:elimination',data=>{if(data.victim===user.id){localMesh.visible=false;$('gameNotice').textContent='ELIMINATED · RESPAWNING';}else{const victim=remoteMeshes.get(data.victim);if(victim)victim.visible=false;if(data.killer===user.id){$('gameNotice').textContent='TARGET ELIMINATED';setTimeout(()=>{$('gameNotice').textContent='WASD MOVE · MOUSE AIM · CLICK FIRE';},1200);}}});
  socket.on('combat:hit',data=>{if(data.to===user.id){$('health').textContent=data.health;$('healthBar').style.width=data.health+'%';}});
  socket.on('weapon:reloaded',data=>{if(data.weapon===weaponKey){ammo=data.ammo;$('ammo').textContent=ammo+' / ∞';}});
@@ -94,4 +94,4 @@ document.addEventListener('pointerlockchange',()=>{if(document.pointerLockElemen
 document.addEventListener('mousemove',e=>{if(document.pointerLockElement===renderer?.domElement){yaw-=e.movementX*.0022;pitch=THREE.MathUtils.clamp(pitch-e.movementY*.0022,-1.2,1.2);}});
 document.addEventListener('mousedown',e=>{if(e.button===0)fire();if(e.button===2&&gameActive&&weaponKey==='sniper'){camera.fov=camera.fov===75?28:75;camera.updateProjectionMatrix();}});
 window.addEventListener('contextmenu',e=>{if(gameActive)e.preventDefault();});
-if(token){fetch('/api/health').then(r=>r.json()).then(()=>{try{const raw=JSON.parse(atob(token.split('.')[1]));if(raw.exp*1000>Date.now()){user={id:raw.id,username:raw.username};enterLobby();}else throw Error();}catch{localStorage.removeItem('os_token');token='';}}).catch(()=>{});}
+if(token){fetch('/api/health').then(r=>r.json()).then(()=>{try{const payload=token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');const raw=JSON.parse(atob(payload));if(raw.exp*1000>Date.now()){user={id:raw.id,username:raw.username};enterLobby();}else throw Error();}catch{localStorage.removeItem('os_token');token='';}}).catch(()=>{});}

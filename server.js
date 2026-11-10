@@ -160,13 +160,14 @@ io.on('connection', socket => {
   socket.on('player:ready',(ready,ack=()=>{})=>{
     const room=rooms.get(socket.data.roomId), player=room?.players.get(user.id);
     if(!room||room.status!=='waiting') return ack({ok:false,error:'Room is not waiting.'});
+    if(ready&&(!player.character||!player.team)) return ack({ok:false,error:'Choose an operator and a team before readying up.'});
     player.ready=!!ready; ack({ok:true}); broadcastRoom(room);
   });
   socket.on('room:start',(ack=()=>{})=>{
     const room=rooms.get(socket.data.roomId);
     if(!room||room.hostId!==user.id) return ack({ok:false,error:'Only the room host can start.'});
     if(room.players.size<2) return ack({ok:false,error:'At least 2 players are required.'});
-    if([...room.players.values()].some(p=>!p.ready)) return ack({ok:false,error:'Every player must be ready.'});
+    if([...room.players.values()].some(p=>!p.ready||!p.character||!p.team)) return ack({ok:false,error:'Every player must choose an operator, join a team and be ready.'});
     if(new Set([...room.players.values()].map(p=>p.team)).size<2) return ack({ok:false,error:'Both teams need players.'});
     room.status='playing'; room.endsAt=now()+room.duration*1000;
     for(const p of room.players.values()){p.health=100;p.kills=0;p.deaths=0;p.x=p.team==='blue'?-12:12;p.z=(Math.random()-.5)*10;p.y=0;p.ready=true;}
