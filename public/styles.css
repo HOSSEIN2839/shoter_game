@@ -20,3 +20,11 @@
 .character-art.style-4 i{top:1px;height:6px;border-radius:3px;background:#5a5547}
 .character-art.style-0 b{background:#3b4639}.character-art.style-1 b{background:#45483e}.character-art.style-2 b{background:#454d57}.character-art.style-3 b{background:#343c43}.character-art.style-4 b{background:#625747}
 .minimap .map-player{display:none}
+
+.stats-panel{margin-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:28px;padding:24px}
+.win-rate{display:block;margin-top:14px;font:700 30px 'Barlow Condensed',sans-serif;color:#d7aa60}
+.leaderboard{min-width:0}.leader-row{display:grid;grid-template-columns:1fr auto auto;gap:14px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.07);font-size:12px}.leader-row strong{color:#d7aa60}.leader-row small{color:#9ba4a6}
+.scoreboard{position:absolute;z-index:12;left:50%;top:50%;transform:translate(-50%,-50%);width:min(680px,90vw);padding:18px 22px;background:rgba(8,13,17,.94);border:1px solid rgba(215,170,96,.55);box-shadow:0 18px 70px #000b;backdrop-filter:blur(12px)}
+.scoreboard-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;font:700 18px 'Barlow Condensed',sans-serif;letter-spacing:1.5px}.scoreboard-head small{font:10px Inter,sans-serif;color:#9ba4a6}
+.scoreboard table{width:100%;border-collapse:collapse;font-size:12px}.scoreboard th{text-align:left;color:#d7aa60;font-size:10px;letter-spacing:1px;padding:8px;border-bottom:1px solid #455056}.scoreboard td{padding:9px 8px;border-bottom:1px solid rgba(255,255,255,.07)}.scoreboard tr:nth-child(even){background:rgba(255,255,255,.025)}
+@media(max-width:700px){.stats-panel{grid-template-columns:1fr;gap:18px}.scoreboard{padding:12px;width:96vw}.scoreboard table{font-size:10px}.scoreboard th,.scoreboard td{padding:6px 4px}}

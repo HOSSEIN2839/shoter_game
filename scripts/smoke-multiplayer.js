@@ -58,9 +58,19 @@ function event(socket, name) {
     assert.equal(hostGame.room.status, 'playing');
     assert.equal(guestGame.room.players.length, 2);
     assert.equal(hostGame.remaining, 600, 'match duration is ten minutes');
+    const profile = await fetch(baseUrl + '/api/me', { headers: { Authorization: 'Bearer ' + hostAccount.token } });
+    assert.equal(profile.status, 200, 'Bearer token profile endpoint should work');
+    assert.equal((await profile.json()).username, 'ci_host_01');
+    const stats = await fetch(baseUrl + '/api/me/stats', { headers: { Authorization: 'Bearer ' + hostAccount.token } });
+    assert.equal(stats.status, 200, 'Bearer token stats endpoint should work');
+    assert.equal((await stats.json()).matches, 0, 'new account starts with zero matches');
+    const unauthenticatedStats = await fetch(baseUrl + '/api/me/stats');
+    assert.equal(unauthenticatedStats.status, 401, 'private stats must reject anonymous requests');
 
     const fired = await ack(host, 'weapon:fire', { weapon: 'rifle', yaw: 0, pitch: 0 });
     assert.ok(fired.ok, 'valid rifle shot is accepted');
+    const spoofedAim = await ack(host, 'weapon:fire', { weapon: 'rifle', yaw: Math.PI, pitch: 0 });
+    assert.equal(spoofedAim.ok, false, 'server must reject aim direction that differs from replicated player aim');
     assert.equal(fired.ammo, 29, 'rifle magazine decrements');
     const reloadDone = event(host, 'weapon:reloaded');
     assert.ok((await ack(host, 'weapon:reload', 'rifle')).ok, 'reload is accepted');

@@ -52,9 +52,10 @@ app.use(express.json({ limit: '16kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/api/health', (_req, res) => res.json({ ok: true, game: 'OPERATION: STRIKE', version: '0.3.0' }));
 function requireAuth(req,res,next){
-  try{const token=String(req.headers.authorization||'').replace(/^Bearer\\s+/i,'');if(!token)throw new Error('missing');req.user=jwt.verify(token,SECRET);next();}
+  try{const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');if(!token)throw new Error('missing');req.user=jwt.verify(token,SECRET);next();}
   catch{return res.status(401).json({error:'Please sign in again.'});}
 }
+app.get('/api/me',requireAuth,(req,res)=>res.json({id:req.user.id,username:req.user.username}));
 app.get('/api/me/stats',requireAuth,(req,res)=>{
  const stats=db.prepare('SELECT matches,wins,kills,deaths FROM player_stats WHERE user_id=?').get(req.user.id)||{matches:0,wins:0,kills:0,deaths:0};
  res.json({username:req.user.username,...stats,winRate:stats.matches?Math.round(stats.wins/stats.matches*100):0});
@@ -140,6 +141,12 @@ function pathBlocked(x1,z1,x2,z2){return COLLIDERS.some(([cx,cz,w,d])=>segmentHi
 function hasLineOfSight(shooter,target){return !COLLIDERS.some(([cx,cz,w,d])=>segmentHitsBox(shooter.x,shooter.z,target.x,target.z,cx,cz,w,d,0));}
 const rooms = new Map();
 const socketsByUser = new Map();
+function allowSocketEvent(socket,key,limit=8,windowMs=1000){
+ const t=now(), buckets=socket.data.rateBuckets||(socket.data.rateBuckets={});
+ const recent=(buckets[key]||[]).filter(stamp=>t-stamp<windowMs);
+ if(recent.length>=limit){buckets[key]=recent;return false;}
+ recent.push(t);buckets[key]=recent;return true;
+}
 const now = () => Date.now();
 const safePlayer = p => ({ id:p.id, username:p.username, character:p.character, team:p.team, ready:p.ready, kills:p.kills, deaths:p.deaths, health:p.health, x:p.x, y:p.y, z:p.z, yaw:p.yaw, ammo:p.ammo||{} });
 function roomView(room) {
@@ -163,7 +170,7 @@ function releasePlayer(socket) {
     clearInterval(room.timer); rooms.delete(roomId);
   } else {
     if (room.hostId === socket.data.user.id) room.hostId = room.players.keys().next().value;
-    if (room.status === 'waiting') broadcastRoom(room);
+    broadcastRoom(room);
   }
   sendLobby();
 }
@@ -187,7 +194,8 @@ io.on('connection', socket => {
   socket.on('rooms:refresh',()=>socket.emit('rooms:update',[...rooms.values()].filter(r=>r.status==='waiting').map(r=>({id:r.id,name:r.name,players:r.players.size,maxPlayers:r.maxPlayers,host:r.players.get(r.hostId)?.username||'Host'}))));
   socket.on('room:create', (payload={}, ack=()=>{}) => {
     releasePlayer(socket);
-    const id = Math.random().toString(36).slice(2,8).toUpperCase();
+    if(!allowSocketEvent(socket,'room:create',3,10000))return ack({ok:false,error:'Please wait before creating another room.'});
+    let id;do{id=Math.random().toString(36).slice(2,8).toUpperCase();}while(rooms.has(id));
     const roomName = String(payload.name || 'Combat Room').replace(/[<>]/g, '').trim().slice(0,28) || 'Combat Room';
     const requestedSize = Number(payload.maxPlayers);
     const maxPlayers = Number.isFinite(requestedSize) ? Math.max(2, Math.min(20, Math.floor(requestedSize))) : 10;
@@ -198,6 +206,7 @@ io.on('connection', socket => {
     ack({ok:true,room:roomView(room)}); broadcastRoom(room); sendLobby();
   });
   socket.on('room:join', (id, ack=()=>{}) => {
+    if(!allowSocketEvent(socket,'room:join',6,10000))return ack({ok:false,error:'Too many join attempts. Wait a moment.'});
     const room=rooms.get(String(id||'').toUpperCase());
     if (!room || room.status!=='waiting') return ack({ok:false,error:'Room is not available.'});
     if (room.players.size>=room.maxPlayers) return ack({ok:false,error:'Room is full.'});
@@ -252,23 +261,27 @@ io.on('connection', socket => {
   socket.on('player:move',(input={})=>{
     const room=rooms.get(socket.data.roomId), p=room?.players.get(user.id);
     if(!room||room.status!=='playing'||!p||p.health<=0)return;
-    const x=Number(input.x),z=Number(input.z),yaw=Number(input.yaw);
-    if(![x,z,yaw].every(Number.isFinite))return;
+    const x=Number(input.x),z=Number(input.z),yaw=Number(input.yaw),pitch=Number(input.pitch||0);
+    const correct=()=>socket.emit('player:correct',{x:p.x,z:p.z,yaw:p.yaw,pitch:p.pitch||0});
+    if(![x,z,yaw,pitch].every(Number.isFinite)||Math.abs(yaw)>Math.PI*4||Math.abs(pitch)>1.25){correct();return;}
     const dt=Math.min(0.25,Math.max(.02,(now()-(p.lastMove||now()))/1000));
-    if(Math.abs(x)>31||Math.abs(z)>31||Math.abs(yaw)>1000||isBlocked(x,z)||pathBlocked(p.x,p.z,x,z))return;
+    if(Math.abs(x)>31||Math.abs(z)>31||isBlocked(x,z)||pathBlocked(p.x,p.z,x,z)){correct();return;}
     const max=8.5*dt+0.55;
-    for(const other of room.players.values())if(other.id!==p.id&&other.health>0&&Math.hypot(x-other.x,z-other.z)<0.9)return;
+    for(const other of room.players.values())if(other.id!==p.id&&other.health>0&&Math.hypot(x-other.x,z-other.z)<0.9){correct();return;}
     const dist=Math.hypot(x-p.x,z-p.z);
-    if(dist>max)return;
-    p.x=x;p.z=z;p.yaw=yaw;p.lastMove=now();
+    if(dist>max){correct();return;}
+    p.x=x;p.z=z;p.yaw=yaw;p.pitch=pitch;p.lastMove=now();
     socket.to(room.id).emit('player:moved',{id:p.id,x:p.x,z:p.z,yaw:p.yaw});
   });
   socket.on('weapon:fire',(input={},ack=()=>{})=>{
     const room=rooms.get(socket.data.roomId), shooter=room?.players.get(user.id);
-    if(!room||room.status!=='playing'||!shooter||shooter.health<=0)return;
+    if(!room||room.status!=='playing'||!shooter||shooter.health<=0)return ack({ok:false,error:'You are not active in this match.'});
+    if(!allowSocketEvent(socket,'weapon:fire',30,1000))return ack({ok:false,error:'Shot rate limited.'});
     const key=WEAPONS[input.weapon]?input.weapon:'rifle', weapon=WEAPONS[key], t=now();
-    const yaw=Number(input.yaw),pitch=Number(input.pitch);
-    if(!Number.isFinite(yaw)||!Number.isFinite(pitch)||Math.abs(yaw)>1000||Math.abs(pitch)>1.25) return ack({ok:false,error:'Invalid aim input.'});
+    const requestedYaw=Number(input.yaw),requestedPitch=Number(input.pitch);
+    const angleDelta=Math.atan2(Math.sin(requestedYaw-(shooter.yaw||0)),Math.cos(requestedYaw-(shooter.yaw||0)));
+    if(!Number.isFinite(requestedYaw)||!Number.isFinite(requestedPitch)||Math.abs(angleDelta)>.28||Math.abs(requestedPitch-(shooter.pitch||0))>.28) return ack({ok:false,error:'Aim state rejected. Keep your aim synchronized.'});
+    const yaw=shooter.yaw||0,pitch=shooter.pitch||0;
     if(shooter.reloadingUntil>t)return ack({ok:false,error:'Reloading.'});
     if(t-(shooter.lastShot||0)<60000/weapon.rpm*.85)return ack({ok:false,error:'Fire rate limited.'});
     if(shooter.ammo[key]===undefined)shooter.ammo[key]=weapon.magazine;
@@ -296,15 +309,16 @@ io.on('connection', socket => {
   });
   socket.on('weapon:reload',(key,ack=()=>{})=>{
     const room=rooms.get(socket.data.roomId),p=room?.players.get(user.id),w=WEAPONS[key];
-    if(!room||!p||!w||p.health<=0)return;
-    if(p.reloadingUntil>now())return;
+    if(!room||room.status!=='playing'||!p||!w||p.health<=0)return ack({ok:false,error:'Cannot reload now.'});
+    if(!allowSocketEvent(socket,'weapon:reload',5,3000))return ack({ok:false,error:'Reload request rate limited.'});
+    if(p.reloadingUntil>now())return ack({ok:false,error:'Already reloading.'});
     p.reloadingUntil=now()+w.reloadMs;
     setTimeout(()=>{if(rooms.get(room.id)!==room||room.status!=='playing'||room.players.get(user.id)!==p||!socket.connected)return;p.ammo[key]=w.magazine;p.reloadingUntil=0;socket.emit('weapon:reloaded',{weapon:key,ammo:w.magazine});},w.reloadMs);
     ack({ok:true});
   });
   socket.on('disconnect',()=>{releasePlayer(socket);if(socketsByUser.get(user.id)===socket)socketsByUser.delete(user.id);});
 });
-function makePlayer(user){return {id:user.id,username:user.username,character:null,team:null,ready:false,kills:0,deaths:0,health:100,x:0,y:0,z:0,yaw:0,ammo:{},lastShot:0,lastMove:now(),reloadingUntil:0,respawnAt:0};}
+function makePlayer(user){return {id:user.id,username:user.username,character:null,team:null,ready:false,kills:0,deaths:0,health:100,x:0,y:0,z:0,yaw:0,pitch:0,ammo:{},lastShot:0,lastMove:now(),reloadingUntil:0,respawnAt:0};}
 function broadcastScores(room){io.to(room.id).emit('score:update',resultFor(room));}
 function persistMatch(room){
  if(room.statsSaved)return;room.statsSaved=true;

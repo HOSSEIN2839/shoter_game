@@ -47,7 +47,7 @@ This is an initial playable foundation, not yet a production-ready competitive F
 Never deploy with the fallback JWT secret. Use HTTPS and a persistent writable data volume in production.
 
 
-## Current prototype update (build 0.2.0)
+## Current prototype update (build 0.4.0)
 
 Recent improvements:
 - Fifteen selectable operator identities with varied procedural tactical gear, headwear, uniform palettes and blue/red team armbands (still procedural meshes, not imported GLBs).
@@ -56,7 +56,9 @@ Recent improvements:
 - Arena obstacle collision on both client and server.
 - Per-weapon ammunition is retained when switching weapons and reloads update the correct weapon.
 - Server-side input bounds, obstacle checks, fire-rate/aim validation, authentication throttling, one active socket per account, balanced team selection, and a production JWT secret guard.
-- GitHub Actions syntax, HTTP/authentication and two-player Socket.IO smoke tests (room creation/join, character exclusivity, team balance, ready/start, firing and reload).
+- GitHub Actions syntax, HTTP/authentication and two-player Socket.IO smoke tests (room creation/join, character exclusivity, team balance, ready/start, firing/reload, private profile/stats API and server-side aim validation).
+- Verified `/api/me` session restoration, `/api/me/stats` and public leaderboard displayed in the lobby.
+- Live scoreboard overlay (hold Tab), remote-player interpolation, and client position correction after server collision/speed rejection.
 - Training arena detail additions are documented in `docs/ASSET_PIPELINE.md`.
 
 ## Run locally
