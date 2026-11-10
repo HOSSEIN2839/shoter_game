@@ -148,7 +148,7 @@ function allowSocketEvent(socket,key,limit=8,windowMs=1000){
  recent.push(t);buckets[key]=recent;return true;
 }
 const now = () => Date.now();
-const safePlayer = p => ({ id:p.id, username:p.username, character:p.character, team:p.team, ready:p.ready, kills:p.kills, deaths:p.deaths, health:p.health, x:p.x, y:p.y, z:p.z, yaw:p.yaw, ammo:p.ammo||{} });
+const safePlayer = p => ({ id:p.id, username:p.username, character:p.character, team:p.team, ready:p.ready, kills:p.kills, deaths:p.deaths, health:p.health, x:p.x, y:p.y, z:p.z, yaw:p.yaw, pitch:p.pitch||0, ammo:p.ammo||{} });
 function roomView(room) {
   return { id:room.id, name:room.name, hostId:room.hostId, status:room.status, duration:room.duration,
     players:[...room.players.values()].map(safePlayer), maxPlayers:room.maxPlayers, createdAt:room.createdAt };
