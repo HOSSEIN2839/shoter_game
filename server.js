@@ -50,7 +50,7 @@ const io = new Server(server, { cors: { origin: false }, pingInterval: 15000, pi
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: '16kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
-app.get('/api/health', (_req, res) => res.json({ ok: true, game: 'OPERATION: STRIKE', version: '0.3.0' }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, game: 'OPERATION: STRIKE', version: '0.4.0' }));
 function requireAuth(req,res,next){
   try{const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');if(!token)throw new Error('missing');req.user=jwt.verify(token,SECRET);next();}
   catch{return res.status(401).json({error:'Please sign in again.'});}
