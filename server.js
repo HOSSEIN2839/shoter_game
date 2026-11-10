@@ -138,6 +138,7 @@ function segmentHitsBox(x1,z1,x2,z2,cx,cz,w,d,pad=.58){
  return tMax>=0&&tMin<=1;
 }
 function pathBlocked(x1,z1,x2,z2){return COLLIDERS.some(([cx,cz,w,d])=>segmentHitsBox(x1,z1,x2,z2,cx,cz,w,d));}
+function pointSegmentDistance(px,pz,x1,z1,x2,z2){const dx=x2-x1,dz=z2-z1,len=dx*dx+dz*dz;if(!len)return Math.hypot(px-x1,pz-z1);const t=Math.max(0,Math.min(1,((px-x1)*dx+(pz-z1)*dz)/len));return Math.hypot(px-(x1+t*dx),pz-(z1+t*dz));}
 function hasLineOfSight(shooter,target){return !COLLIDERS.some(([cx,cz,w,d])=>segmentHitsBox(shooter.x,shooter.z,target.x,target.z,cx,cz,w,d,0));}
 const rooms = new Map();
 const socketsByUser = new Map();
@@ -217,6 +218,7 @@ io.on('connection', socket => {
   });
   socket.on('room:leave',()=>releasePlayer(socket));
   socket.on('player:character',(characterId,ack=()=>{})=>{
+    if(!allowSocketEvent(socket,'player:character',8,10000))return ack({ok:false,error:'Too many character changes. Wait a moment.'});
     const room=rooms.get(socket.data.roomId), player=room?.players.get(user.id);
     if(!room||room.status!=='waiting') return ack({ok:false,error:'Character selection is closed.'});
     const character=CHARACTERS.find(c=>c.id===characterId);
@@ -227,6 +229,7 @@ io.on('connection', socket => {
     player.character=characterId; ack({ok:true}); broadcastRoom(room);
   });
   socket.on('player:team',(team,ack=()=>{})=>{
+    if(!allowSocketEvent(socket,'player:team',8,10000))return ack({ok:false,error:'Too many team changes. Wait a moment.'});
     const room=rooms.get(socket.data.roomId), player=room?.players.get(user.id);
     if(!room||room.status!=='waiting'||!['blue','red'].includes(team)) return ack({ok:false,error:'Team cannot be changed.'});
     const count=[...room.players.values()].filter(p=>p.team===team&&p.id!==user.id).length;
@@ -236,12 +239,14 @@ io.on('connection', socket => {
     player.team=team; player.ready=false; ack({ok:true}); broadcastRoom(room);
   });
   socket.on('player:ready',(ready,ack=()=>{})=>{
+    if(!allowSocketEvent(socket,'player:ready',10,10000))return ack({ok:false,error:'Too many ready changes. Wait a moment.'});
     const room=rooms.get(socket.data.roomId), player=room?.players.get(user.id);
     if(!room||room.status!=='waiting') return ack({ok:false,error:'Room is not waiting.'});
     if(ready&&(!player.character||!player.team)) return ack({ok:false,error:'Choose an operator and a team before readying up.'});
     player.ready=!!ready; ack({ok:true}); broadcastRoom(room);
   });
   socket.on('room:start',(ack=()=>{})=>{
+    if(!allowSocketEvent(socket,'room:start',3,10000))return ack({ok:false,error:'Too many start requests.'});
     const room=rooms.get(socket.data.roomId);
     if(!room||room.hostId!==user.id) return ack({ok:false,error:'Only the room host can start.'});
     if(room.players.size<2) return ack({ok:false,error:'At least 2 players are required.'});
@@ -262,13 +267,16 @@ io.on('connection', socket => {
   socket.on('player:move',(input={})=>{
     const room=rooms.get(socket.data.roomId), p=room?.players.get(user.id);
     if(!room||room.status!=='playing'||!p||p.health<=0)return;
-    const x=Number(input.x),z=Number(input.z),yaw=Number(input.yaw),pitch=Number(input.pitch||0);
     const correct=()=>socket.emit('player:correct',{x:p.x,z:p.z,yaw:p.yaw,pitch:p.pitch||0});
-    if(![x,z,yaw,pitch].every(Number.isFinite)||Math.abs(yaw)>Math.PI*4||Math.abs(pitch)>1.25){correct();return;}
+    if(!allowSocketEvent(socket,'player:move',20,1000)){correct();return;}
+    const x=Number(input.x),z=Number(input.z),yaw=Number(input.yaw),pitch=Number(input.pitch||0);
+    if(![x,z,yaw,pitch].every(Number.isFinite)||Math.abs(yaw)>Math.PI||Math.abs(pitch)>1.25){correct();return;}
     const dt=Math.min(0.25,Math.max(.02,(now()-(p.lastMove||now()))/1000));
+    const turnDelta=Math.atan2(Math.sin(yaw-(p.yaw||0)),Math.cos(yaw-(p.yaw||0)));
+    if(Math.abs(turnDelta)>8*dt+.25){correct();return;}
     if(Math.abs(x)>31||Math.abs(z)>31||isBlocked(x,z)||pathBlocked(p.x,p.z,x,z)){correct();return;}
-    const max=8.5*dt+0.55;
-    for(const other of room.players.values())if(other.id!==p.id&&other.health>0&&Math.hypot(x-other.x,z-other.z)<0.9){correct();return;}
+    const max=9.5*dt+0.25;
+    for(const other of room.players.values())if(other.id!==p.id&&other.health>0&&pointSegmentDistance(other.x,other.z,p.x,p.z,x,z)<0.72){correct();return;}
     const dist=Math.hypot(x-p.x,z-p.z);
     if(dist>max){correct();return;}
     p.x=x;p.z=z;p.yaw=yaw;p.pitch=pitch;p.lastMove=now();

@@ -1,97 +1,63 @@
 # OPERATION: STRIKE
 
-A browser-based, real-time multiplayer first-person shooter prototype.
+Browser-based multiplayer first-person shooter prototype. The client uses Three.js; the server uses Node.js, Express, Socket.IO and SQLite.
 
-## Current build
+## Current features
 
-- Username/password registration and sign-in (bcrypt password hashing, signed 7-day sessions).
-- Multiplayer rooms, host controls, team selection, ready checks and a 10-minute match timer.
-- 15 selectable operator identities; one operator can be selected by only one player in a room.
-- A procedural 3D training-yard arena rendered with Three.js.
-- Four weapon classes: assault rifle, sniper, shotgun and pistol.
-- Server-side fire-rate, ammo, damage, elimination, respawn and team-score handling.
-- Live room and score updates over Socket.IO.
+- Account registration/login with bcrypt password hashing and JWT sessions.
+- Room creation/joining, host control, team balancing, ready checks and 10-minute matches.
+- Fifteen operator slots with exclusive selection per room.
+- Four weapons: assault rifle, sniper, shotgun and pistol; server-controlled magazine, reload and fire-rate rules.
+- Server-validated movement bounds, arena obstacles, player collision, turn-rate limits and shot aim synchronization.
+- Live score, kill/death feed, minimap, compass and hold-Tab scoreboard.
+- Career stats and public leaderboard.
+- GLB loader pipeline with safe skinned-mesh cloning, height normalization, team armband and available idle/walk/run clips. Procedural operators remain the fallback.
 
-## Requirements
-
-- Node.js 20 or newer
-- npm
-
-## Run locally
-
-\`\`\`bash
-npm install
-\`\`\`
-
-Set a strong secret before starting:
-
-\`\`\`bash
-# Linux/macOS
-export JWT_SECRET="$(openssl rand -hex 32)"
-npm start
-\`\`\`
-
-PowerShell:
-
-\`\`\`powershell
-$env:JWT_SECRET = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
-npm start
-\`\`\`
-
-Open http://localhost:3000 in two or more browser sessions to test multiplayer.
-
-## Important prototype notes
-
-This is an initial playable foundation, not yet a production-ready competitive FPS. Operator bodies and the arena are currently generated procedurally; licensed GLB character and environment assets, animation rigs, sound, collision/physics, robust authoritative movement validation, anti-cheat, persistent player statistics, HTTPS deployment, rate limiting and load testing are follow-up work. All 15 operator slots are selectable in this first build. Their current visual models are procedural placeholders, not imported GLB assets. The server currently stores accounts in SQLite under \`data/\`.
-
-Never deploy with the fallback JWT secret. Use HTTPS and a persistent writable data volume in production.
-
-
-## Current prototype update (build 0.4.0)
-
-Recent improvements:
-- Fifteen selectable operator identities with varied procedural tactical gear, headwear, uniform palettes and blue/red team armbands; manifest-driven GLB loading is integrated with safe skinned-mesh cloning, automatic scale normalization, team armbands, idle/walk/run animation playback and procedural fallback. No third-party GLB binaries are committed yet.
-- First-person procedural weapon models, muzzle flashes, hold-to-fire automatic weapons and a hold-right-click sniper scope.
-- Live minimap player markers, compass heading and elimination feed.
-- Arena obstacle collision on both client and server.
-- Per-weapon ammunition is retained when switching weapons and reloads update the correct weapon.
-- Server-side input bounds, obstacle checks, fire-rate/aim validation, authentication throttling, one active socket per account, balanced team selection, and a production JWT secret guard.
-- GitHub Actions syntax, HTTP/authentication and two-player Socket.IO smoke tests (room creation/join, character exclusivity, team balance, ready/start, firing/reload, private profile/stats API and server-side aim validation).
-- Verified `/api/me` session restoration, `/api/me/stats` and public leaderboard displayed in the lobby.
-- Live scoreboard overlay (hold Tab), remote-player interpolation, and client position correction after server collision/speed rejection.
-- Aim direction is checked against the last server-replicated yaw/pitch; yaw is normalized to avoid long-session drift. CI also verifies that impossible client positions are corrected by the server.
-- Training arena detail additions are documented in `docs/ASSET_PIPELINE.md`.
-
-## Run locally
+## Run on Windows 11 (PowerShell)
 
 Requirements: Node.js 20 or newer.
 
-```bash
-npm install
-npm run check
-```
-
-Set a strong secret before exposing the server publicly:
-
-```bash
-# Linux/macOS
-export JWT_SECRET="$(openssl rand -hex 32)"
-npm start
-```
-
-PowerShell:
-
 ```powershell
-$env:JWT_SECRET = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+npm install
+$bytes = New-Object byte[] 32
+[Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+$env:JWT_SECRET = [Convert]::ToHexString($bytes)
+npm run check
 npm start
 ```
 
-Open `http://localhost:3000` in two separate browsers or devices to test two accounts. The current match state and rooms are in memory; only account credentials persist in SQLite. Use HTTPS/reverse proxy, backups, monitoring and a production-grade anti-cheat review before public launch.
+Open [http://localhost:3000](http://localhost:3000). To test multiplayer, open the page in two separate browsers or devices and create two accounts.
 
-**Not yet production complete:** the operators are procedural meshes, not imported GLB models; the arena is still procedural; physics/collision, animation, sound, persistent match statistics, lag compensation, authoritative movement simulation and load testing remain outstanding. The browser prototype has not been represented as tested until CI and a real multiplayer session pass.
+## Controls
 
+| Action | Control |
+|---|---|
+| Move | W, A, S, D |
+| Sprint | Left Shift |
+| Aim | Mouse |
+| Fire | Left mouse button |
+| Sniper scope | Hold right mouse button |
+| Reload | R |
+| Change weapon | 1–4 |
+| Scoreboard | Hold Tab |
 
-The GLB loader and manifest are in place, but the manifest intentionally keeps all 15 model paths empty until the licensed model files are actually acquired. `npm run check` validates the manifest and any GLB files added later; it does not pretend missing models exist.
+Click the game view to capture the mouse. Press Escape to release it.
 
+## Validation
 
-The room protocol also treats repeated joins to the current room as an idempotent operation. The multiplayer regression test covers this case so it cannot reset a selected operator or silently remove the player.
+`npm run check` validates server/client syntax and the 15-slot GLB manifest. `npm run test:multiplayer` exercises two accounts, Socket.IO connections, room creation/join, duplicate room join, character exclusivity, team balancing, ready/start, movement correction, turn-rate/aim validation, firing and reload.
+
+GitHub Actions runs the syntax and multiplayer smoke tests on pushes to `main` and pull requests.
+
+## Data and deployment
+
+- Account credentials and completed-match statistics persist in `data/operation-strike.sqlite`.
+- Active rooms and in-progress match state are in memory and are lost when the server restarts.
+- For public hosting, use HTTPS behind a reverse proxy, set a unique strong `JWT_SECRET`, configure backups for the SQLite database, monitor memory/CPU, and load-test with real browsers.
+- The current server validation is not a substitute for a professional anti-cheat system or a security review.
+
+## Assets and known gaps
+
+The current arena and procedural operator fallback are generated by code. The GLB loader is ready, but `public/assets/characters/manifest.json` intentionally has 15 empty model slots because no third-party binary model files have yet been acquired and verified. The Quaternius modular men/women packs are documented as candidate CC0 sources in `docs/ASSET_PIPELINE.md`; the actual models still need to be downloaded, inspected, selected, and added.
+
+Not yet production complete: imported character models, complete animation coverage (fire/reload/hit/death), final polished map art, sound design, lag compensation, persistent match history beyond aggregate stats, browser/device testing, load testing and production security review.

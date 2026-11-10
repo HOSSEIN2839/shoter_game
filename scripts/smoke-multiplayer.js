@@ -77,6 +77,10 @@ function event(socket, name) {
 
     const fired = await ack(host, 'weapon:fire', { weapon: 'rifle', yaw: 0, pitch: 0 });
     assert.ok(fired.ok, 'valid rifle shot is accepted');
+    const rejectedTurn = event(host, 'player:correct');
+    host.emit('player:move', { x: correction.x, z: correction.z, yaw: Math.PI, pitch: 0 });
+    const turnCorrection = await rejectedTurn;
+    assert.ok(Math.abs(turnCorrection.yaw) < 0.01, 'server rejects impossible instant 180-degree turns');
     const spoofedAim = await ack(host, 'weapon:fire', { weapon: 'rifle', yaw: Math.PI, pitch: 0 });
     assert.equal(spoofedAim.ok, false, 'server must reject aim direction that differs from replicated player aim');
     assert.equal(fired.ammo, 29, 'rifle magazine decrements');
