@@ -51,7 +51,7 @@ function renderRoom(room){
  $('characterGrid').querySelectorAll('[data-char]').forEach(b=>b.onclick=()=>socket.emit('player:character',b.dataset.char,res=>{if(!res.ok)message('roomMessage',res.error);else message('roomMessage','Operator selected.',true);}));
  document.querySelectorAll('[data-team]').forEach(b=>b.classList.toggle('active',b.dataset.team===selectedTeam));
  for(const team of ['blue','red']){$(team+'Players').innerHTML=room.players.filter(p=>p.team===team).map(p=>'<div class="player-row"><span>'+escapeHtml(p.username)+'</span><small>'+(p.ready?'READY':'NOT READY')+'</small></div>').join('')||'<p class="tiny muted">No players yet</p>';}
- $('readyBtn').textContent=isReady?'CANCEL READY':'I\\'M READY ✓';$('readyBtn').disabled=!selectedCharacter||!selectedTeam;
+ $('readyBtn').textContent=isReady?'CANCEL READY':"I'M READY ✓";$('readyBtn').disabled=!selectedCharacter||!selectedTeam;
  $('startBtn').classList.toggle('hidden',room.hostId!==user.id);
 }
 document.querySelectorAll('[data-team]').forEach(b=>b.onclick=()=>socket.emit('player:team',b.dataset.team,res=>{if(!res.ok)message('roomMessage',res.error);}));
