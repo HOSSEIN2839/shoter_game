@@ -119,22 +119,23 @@ async function applyCharacterAsset(fallbackMesh,characterId,team){
   let pending=gltfCache.get(src);
   if(!pending){pending=gltfLoader.loadAsync(src);gltfCache.set(src,pending);}
   const gltf=await pending;if(!scene||fallbackMesh.parent!==scene)return;
-  const root=cloneSkinned(gltf.scene),bounds=new THREE.Box3().setFromObject(root),size=bounds.getSize(new THREE.Vector3());
+  const model=cloneSkinned(gltf.scene),bounds=new THREE.Box3().setFromObject(model),size=bounds.getSize(new THREE.Vector3());
   if(!Number.isFinite(size.y)||size.y<.2)throw new Error('Invalid character model bounds');
-  root.scale.setScalar(1.8/size.y);
-  const fitted=new THREE.Box3().setFromObject(root),center=fitted.getCenter(new THREE.Vector3());
-  root.position.set(-center.x,-fitted.min.y,-center.z);
-  root.traverse(node=>{if(node.isMesh){node.castShadow=true;node.receiveShadow=true;if(node.material){node.material=Array.isArray(node.material)?node.material.map(m=>m.clone()):node.material.clone();}}});
+  model.scale.setScalar(1.8/size.y);
+  const fitted=new THREE.Box3().setFromObject(model),center=fitted.getCenter(new THREE.Vector3());
+  model.position.set(-center.x,-fitted.min.y,-center.z);
+  model.traverse(node=>{if(node.isMesh){node.castShadow=true;node.receiveShadow=true;if(node.material){node.material=Array.isArray(node.material)?node.material.map(m=>m.clone()):node.material.clone();}}});
   const band=new THREE.Mesh(new THREE.TorusGeometry(.13,.035,8,18),new THREE.MeshStandardMaterial({color:team==='blue'?0x348be8:0xe04d4d,metalness:.15,roughness:.6}));
-  band.rotation.x=Math.PI/2;band.position.set(.22,1.28,0);root.add(band);
-  root.position.copy(fallbackMesh.position);root.rotation.copy(fallbackMesh.rotation);root.visible=fallbackMesh.visible;
-  const mixer=new THREE.AnimationMixer(root),actions={};
+  band.rotation.x=Math.PI/2;band.position.set(.22,1.28,0);model.add(band);
+  const pivot=new THREE.Group();pivot.add(model);pivot.position.copy(fallbackMesh.position);pivot.rotation.copy(fallbackMesh.rotation);pivot.visible=fallbackMesh.visible;
+  pivot.userData.targetPosition=fallbackMesh.userData.targetPosition;pivot.userData.targetYaw=fallbackMesh.userData.targetYaw;
+  const mixer=new THREE.AnimationMixer(model),actions={};
   for(const clip of gltf.animations||[]){const key=clip.name.toLowerCase();actions[key]=mixer.clipAction(clip);}
-  root.userData.animationMixer=mixer;root.userData.animationActions=actions;root.userData.activeAnimation='';
-  if(Object.keys(actions).length){animationMixers.add(mixer);playOperatorAnimation(root,'idle');}
-  const parent=fallbackMesh.parent;parent.add(root);parent.remove(fallbackMesh);
-  if(localMesh===fallbackMesh)localMesh=root;
-  for(const [id,mesh] of remoteMeshes)if(mesh===fallbackMesh)remoteMeshes.set(id,root);
+  pivot.userData.animationMixer=mixer;pivot.userData.animationActions=actions;pivot.userData.activeAnimation='';
+  if(Object.keys(actions).length){animationMixers.add(mixer);playOperatorAnimation(pivot,'idle');}
+  const parent=fallbackMesh.parent;parent.add(pivot);parent.remove(fallbackMesh);
+  if(localMesh===fallbackMesh)localMesh=pivot;
+  for(const [id,mesh] of remoteMeshes)if(mesh===fallbackMesh)remoteMeshes.set(id,pivot);
  }catch(error){console.warn('GLB operator unavailable; using procedural fallback:',characterId,error.message);gltfCache.delete((await assetManifestPromise).models?.[characterId]);}
 }
 function playOperatorAnimation(model,state){

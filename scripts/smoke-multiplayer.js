@@ -67,6 +67,11 @@ function event(socket, name) {
     const unauthenticatedStats = await fetch(baseUrl + '/api/me/stats');
     assert.equal(unauthenticatedStats.status, 401, 'private stats must reject anonymous requests');
 
+    const corrected = event(host, 'player:correct');
+    host.emit('player:move', { x: 999, z: 999, yaw: 0, pitch: 0 });
+    const correction = await corrected;
+    assert.ok(Math.abs(correction.x) <= 31 && Math.abs(correction.z) <= 31, 'server corrects impossible client positions');
+
     const fired = await ack(host, 'weapon:fire', { weapon: 'rifle', yaw: 0, pitch: 0 });
     assert.ok(fired.ok, 'valid rifle shot is accepted');
     const spoofedAim = await ack(host, 'weapon:fire', { weapon: 'rifle', yaw: Math.PI, pitch: 0 });
