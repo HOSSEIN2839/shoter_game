@@ -8,17 +8,26 @@ The game still uses procedural operator meshes as a fallback. No downloaded char
 
 The target is 15 distinct, fully clothed, non-explicit tactical operators with readable silhouettes and a consistent stylized-realistic art direction. Avoid underwear, swimwear, revealing outfits, joke costumes, and unrelated fantasy gear.
 
-### Candidate source: Quaternius
+### Preferred character source: Quaternius Ultimate Modular Men Pack
+
+- Official pack page: https://quaternius.com/packs/ultimatemodularcharacters.html
+- The official page identifies **11 different characters**, **24 animations**, modular character parts, glTF/FBX/OBJ/Blend formats, and a **CC0** licence.
+- The page states the assets are free for personal and commercial projects.
+- This is an older February 2022 pack, so its pack-specific CC0 grant is distinct from newer Quaternius packs and the newer QAL terms. Keep the exact page and the included licence file with the source record.
+
+Eleven distinct characters are a strong starting point, but the target is still 15. Add four additional compatible characters/variants only after verifying their pack-specific licences and humanoid rig compatibility. The pack is stylized rather than photorealistic; inspect its actual models before deciding whether the art direction fits the final FPS.
+
+### Other Quaternius candidates
 
 - Universal Base Characters: https://quaternius.itch.io/universal-base-characters
-- Modular Character Outfits / official pack index: https://quaternius.com/
+- Modular Character Outfits (Fantasy): https://quaternius.com/
 - Universal Animation Library: https://quaternius.itch.io/universal-animation-library
 
-The Universal Base pack page currently advertises six humanoid rigged bases, six body/proportion variants and 20 hairstyles; it is a foundation, not 15 finished operators. The broader Quaternius catalogue lists modular male outfits including soldier/FPS styles and humanoid combat/locomotion animations.
+The Universal Base pack page advertises six humanoid rigged bases and 20 hairstyles; it is a foundation, not 15 finished operators. The fantasy outfit pack is fully clothed but may not fit a modern tactical shooter.
 
-**Important licence handling:** Quaternius published QAL v1.0 on 2026-08-28. It allows use in a finished game, including commercial use, but prohibits redistributing the model files themselves as standalone assets. Therefore do not commit Quaternius source GLB/FBX files into this public repository unless the exact asset's licence at acquisition explicitly permits redistribution. Keep source downloads locally and distribute only the completed game incorporating them, or use a separately verified CC0 source.
+**Licence warning:** Quaternius published QAL v1.0 on 2026-08-28. Newer assets may have restrictions on redistributing source files as standalone assets. Do not assume that an older pack's CC0 grant applies to newer packs. Check the exact pack page and the licence included in each download before committing any source models.
 
-Current licence: https://quaternius.com/license.html
+Current licence information: https://quaternius.com/license.html
 
 ## CC0 alternative for freely redistributable assets
 
