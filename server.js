@@ -1,0 +1,244 @@
+'use strict';
+const path = require('node:path');
+const fs = require('node:fs');
+const http = require('node:http');
+const express = require('express');
+const helmet = require('helmet');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const Database = require('better-sqlite3');
+const { Server } = require('socket.io');
+
+const PORT = Number(process.env.PORT || 3000);
+const SECRET = process.env.JWT_SECRET || 'development-only-change-this-secret-before-deploying';
+if (SECRET.length < 32) console.warn('WARNING: Set a strong JWT_SECRET before public deployment.');
+
+const dataDir = path.join(__dirname, 'data');
+fs.mkdirSync(dataDir, { recursive: true });
+const db = new Database(path.join(dataDir, 'operation-strike.sqlite'));
+db.pragma('journal_mode = WAL');
+db.exec(\`
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  password_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+\`);
+
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: false }, pingInterval: 15000, pingTimeout: 10000 });
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(express.json({ limit: '16kb' }));
+app.use(express.static(path.join(__dirname, 'public')));
+app.get('/api/health', (_req, res) => res.json({ ok: true, game: 'OPERATION: STRIKE' }));
+
+function tokenFor(user) {
+  return jwt.sign({ id: user.id, username: user.username }, SECRET, { expiresIn: '7d' });
+}
+app.post('/api/register', async (req, res) => {
+  const username = String(req.body?.username || '').trim();
+  const password = String(req.body?.password || '');
+  if (!/^[a-zA-Z0-9_]{3,18}$/.test(username))
+    return res.status(400).json({ error: 'Username must be 3–18 letters, numbers or underscores.' });
+  if (password.length < 8 || password.length > 72)
+    return res.status(400).json({ error: 'Password must contain 8–72 characters.' });
+  try {
+    const hash = await bcrypt.hash(password, 12);
+    const result = db.prepare('INSERT INTO users (username,password_hash) VALUES (?,?)').run(username, hash);
+    const user = { id: Number(result.lastInsertRowid), username };
+    res.status(201).json({ token: tokenFor(user), user });
+  } catch (error) {
+    if (String(error.code).includes('SQLITE_CONSTRAINT')) return res.status(409).json({ error: 'Username is already taken.' });
+    console.error(error); res.status(500).json({ error: 'Could not create account.' });
+  }
+});
+app.post('/api/login', async (req, res) => {
+  const username = String(req.body?.username || '').trim();
+  const password = String(req.body?.password || '');
+  const row = db.prepare('SELECT * FROM users WHERE username = ? COLLATE NOCASE').get(username);
+  if (!row || !(await bcrypt.compare(password, row.password_hash)))
+    return res.status(401).json({ error: 'Incorrect username or password.' });
+  const user = { id: row.id, username: row.username };
+  res.json({ token: tokenFor(user), user });
+});
+
+const CHARACTERS = Array.from({ length: 15 }, (_, i) => ({
+  id: 'operator-' + String(i + 1).padStart(2, '0'),
+  name: ['Vanguard','Ranger','Nomad','Phantom','Sentinel','Raptor','Ghost','Falcon','Titan','Warden','Striker','Reaper','Scout','Onyx','Atlas'][i],
+  color: ['#d1a46b','#7b9a70','#c28b62','#777d91','#9caa9b','#bb7659','#788aa8','#a7a06c','#a67b65','#718e86','#b58c57','#8b6f7e','#7291a0','#777777','#a0a0a0'][i],
+  unlocked: i < 5
+}));
+const WEAPONS = {
+  rifle: { name:'Assault Rifle', damage:24, rpm:600, range:55, magazine:30, reloadMs:1800, automatic:true },
+  sniper: { name:'Sniper', damage:90, rpm:50, range:110, magazine:5, reloadMs:2600, automatic:false },
+  shotgun: { name:'Shotgun', damage:12, rpm:90, range:18, magazine:8, reloadMs:2200, automatic:false },
+  pistol: { name:'Pistol', damage:20, rpm:300, range:32, magazine:12, reloadMs:1300, automatic:false }
+};
+const rooms = new Map();
+const socketsByUser = new Map();
+const now = () => Date.now();
+const safePlayer = p => ({ id:p.id, username:p.username, character:p.character, team:p.team, ready:p.ready, kills:p.kills, deaths:p.deaths, health:p.health, x:p.x, y:p.y, z:p.z, yaw:p.yaw });
+function roomView(room) {
+  return { id:room.id, name:room.name, hostId:room.hostId, status:room.status, duration:room.duration,
+    players:[...room.players.values()].map(safePlayer), maxPlayers:room.maxPlayers, createdAt:room.createdAt };
+}
+function broadcastRoom(room) { io.to(room.id).emit('room:update', roomView(room)); }
+function sendLobby() {
+  io.emit('rooms:update', [...rooms.values()].filter(r=>r.status==='waiting').map(r=>({
+    id:r.id,name:r.name,players:r.players.size,maxPlayers:r.maxPlayers,host:r.players.get(r.hostId)?.username || 'Host'
+  })));
+}
+function releasePlayer(socket) {
+  const roomId = socket.data.roomId;
+  if (!roomId) return;
+  const room = rooms.get(roomId);
+  socket.leave(roomId); socket.data.roomId = null;
+  if (!room) return;
+  room.players.delete(socket.data.user.id);
+  if (room.players.size === 0) {
+    clearInterval(room.timer); rooms.delete(roomId);
+  } else {
+    if (room.hostId === socket.data.user.id) room.hostId = room.players.keys().next().value;
+    if (room.status === 'waiting') broadcastRoom(room);
+  }
+  sendLobby();
+}
+io.use((socket, next) => {
+  try {
+    const token = socket.handshake.auth?.token;
+    if (!token) return next(new Error('Please sign in first.'));
+    socket.data.user = jwt.verify(token, SECRET);
+    next();
+  } catch { next(new Error('Session expired. Please sign in again.')); }
+});
+io.on('connection', socket => {
+  const user = socket.data.user;
+  socketsByUser.set(user.id, socket);
+  socket.emit('characters:list', CHARACTERS);
+  socket.emit('weapons:list', WEAPONS);
+  socket.emit('rooms:update', [...rooms.values()].filter(r=>r.status==='waiting').map(r=>({id:r.id,name:r.name,players:r.players.size,maxPlayers:r.maxPlayers,host:r.players.get(r.hostId)?.username||'Host'})));
+
+  socket.on('room:create', (payload={}, ack=()=>{}) => {
+    releasePlayer(socket);
+    const id = Math.random().toString(36).slice(2,8).toUpperCase();
+    const room = { id, name:String(payload.name||'Combat Room').slice(0,28), hostId:user.id, status:'waiting',
+      duration:600, maxPlayers:Math.max(2,Math.min(20,Number(payload.maxPlayers)||10)), players:new Map(), createdAt:now(), timer:null, endsAt:null };
+    room.players.set(user.id, makePlayer(user));
+    rooms.set(id,room); socket.data.roomId=id; socket.join(id);
+    ack({ok:true,room:roomView(room)}); broadcastRoom(room); sendLobby();
+  });
+  socket.on('room:join', (id, ack=()=>{}) => {
+    const room=rooms.get(String(id||'').toUpperCase());
+    if (!room || room.status!=='waiting') return ack({ok:false,error:'Room is not available.'});
+    if (room.players.size>=room.maxPlayers) return ack({ok:false,error:'Room is full.'});
+    if (socket.data.roomId) releasePlayer(socket);
+    room.players.set(user.id,makePlayer(user)); socket.data.roomId=room.id; socket.join(room.id);
+    ack({ok:true,room:roomView(room)}); broadcastRoom(room); sendLobby();
+  });
+  socket.on('room:leave',()=>releasePlayer(socket));
+  socket.on('player:character',(characterId,ack=()=>{})=>{
+    const room=rooms.get(socket.data.roomId), player=room?.players.get(user.id);
+    if(!room||room.status!=='waiting') return ack({ok:false,error:'Character selection is closed.'});
+    const character=CHARACTERS.find(c=>c.id===characterId);
+    if(!character) return ack({ok:false,error:'Unknown character.'});
+    if(!character.unlocked) return ack({ok:false,error:'This operator is locked in this prototype.'});
+    const occupied=[...room.players.values()].some(p=>p.id!==user.id&&p.character===characterId);
+    if(occupied) return ack({ok:false,error:'Another player has selected this operator.'});
+    player.character=characterId; ack({ok:true}); broadcastRoom(room);
+  });
+  socket.on('player:team',(team,ack=()=>{})=>{
+    const room=rooms.get(socket.data.roomId), player=room?.players.get(user.id);
+    if(!room||room.status!=='waiting'||!['blue','red'].includes(team)) return ack({ok:false,error:'Team cannot be changed.'});
+    const count=[...room.players.values()].filter(p=>p.team===team&&p.id!==user.id).length;
+    const other=[...room.players.values()].filter(p=>p.team!==team&&p.id!==user.id).length;
+    if(count>=Math.ceil(room.maxPlayers/2) || count>other) return ack({ok:false,error:'That team is full. Choose the other team.'});
+    player.team=team; player.ready=false; ack({ok:true}); broadcastRoom(room);
+  });
+  socket.on('player:ready',(ready,ack=()=>{})=>{
+    const room=rooms.get(socket.data.roomId), player=room?.players.get(user.id);
+    if(!room||room.status!=='waiting') return ack({ok:false,error:'Room is not waiting.'});
+    player.ready=!!ready; ack({ok:true}); broadcastRoom(room);
+  });
+  socket.on('room:start',(ack=()=>{})=>{
+    const room=rooms.get(socket.data.roomId);
+    if(!room||room.hostId!==user.id) return ack({ok:false,error:'Only the room host can start.'});
+    if(room.players.size<2) return ack({ok:false,error:'At least 2 players are required.'});
+    if([...room.players.values()].some(p=>!p.ready)) return ack({ok:false,error:'Every player must be ready.'});
+    if(new Set([...room.players.values()].map(p=>p.team)).size<2) return ack({ok:false,error:'Both teams need players.'});
+    room.status='playing'; room.endsAt=now()+room.duration*1000;
+    for(const p of room.players.values()){p.health=100;p.kills=0;p.deaths=0;p.x=p.team==='blue'?-12:12;p.z=(Math.random()-.5)*10;p.y=0;p.ready=true;}
+    room.timer=setInterval(()=>{
+      const remaining=Math.max(0,Math.ceil((room.endsAt-now())/1000));
+      io.to(room.id).emit('game:clock',{remaining});
+      if(remaining<=0){clearInterval(room.timer);room.status='finished';io.to(room.id).emit('game:finished',resultFor(room));broadcastRoom(room);sendLobby();}
+    },1000);
+    ack({ok:true}); io.to(room.id).emit('game:start',{room:roomView(room),weapons:WEAPONS,remaining:room.duration});
+  });
+  socket.on('player:move',(input={})=>{
+    const room=rooms.get(socket.data.roomId), p=room?.players.get(user.id);
+    if(!room||room.status!=='playing'||!p||p.health<=0)return;
+    const x=Number(input.x),z=Number(input.z),yaw=Number(input.yaw);
+    if(![x,z,yaw].every(Number.isFinite))return;
+    const dt=Math.min(0.25,Math.max(.02,(now()-(p.lastMove||now()))/1000));
+    const max=9*dt+1.2;
+    const dist=Math.hypot(x-p.x,z-p.z);
+    if(dist>max)return;
+    p.x=x;p.z=z;p.yaw=yaw;p.lastMove=now();
+    socket.to(room.id).emit('player:moved',{id:p.id,x:p.x,z:p.z,yaw:p.yaw});
+  });
+  socket.on('weapon:fire',(input={},ack=()=>{})=>{
+    const room=rooms.get(socket.data.roomId), shooter=room?.players.get(user.id);
+    if(!room||room.status!=='playing'||!shooter||shooter.health<=0)return;
+    const key=WEAPONS[input.weapon]?input.weapon:'rifle', weapon=WEAPONS[key], t=now();
+    if(shooter.reloadingUntil>t)return ack({ok:false,error:'Reloading.'});
+    if(t-(shooter.lastShot||0)<60000/weapon.rpm*.85)return;
+    if(shooter.ammo[key]===undefined)shooter.ammo[key]=weapon.magazine;
+    if(shooter.ammo[key]<=0)return ack({ok:false,error:'Reload required.'});
+    shooter.lastShot=t;shooter.ammo[key]--;
+    const yaw=Number(input.yaw),pitch=Number(input.pitch);
+    if(!Number.isFinite(yaw)||!Number.isFinite(pitch))return;
+    const dir={x:-Math.sin(yaw)*Math.cos(pitch),y:Math.sin(pitch),z:-Math.cos(yaw)*Math.cos(pitch)};
+    let target=null,best=weapon.range;
+    for(const p of room.players.values()){
+      if(p.team===shooter.team||p.health<=0)continue;
+      const dx=p.x-shooter.x,dy=1.1,dz=p.z-shooter.z;
+      const along=dx*dir.x+dy*dir.y+dz*dir.z;
+      if(along<=0||along>weapon.range)continue;
+      const perpendicular=Math.sqrt(Math.max(0,dx*dx+dy*dy+dz*dz-along*along));
+      const radius=key==='shotgun'?1.5:.75;
+      if(perpendicular<radius&&along<best){best=along;target=p;}
+    }
+    if(target){
+      const damage=key==='shotgun'?weapon.damage*5:weapon.damage;
+      target.health=Math.max(0,target.health-damage);
+      io.to(room.id).emit('combat:hit',{from:user.id,to:target.id,damage,health:target.health});
+      if(target.health===0){shooter.kills++;target.deaths++;target.health=0;target.respawnAt=now()+3500;io.to(room.id).emit('combat:elimination',{killer:user.id,victim:target.id});}
+      broadcastScores(room);
+    }
+    ack({ok:true,ammo:shooter.ammo[key],hit:!!target});
+  });
+  socket.on('weapon:reload',(key,ack=()=>{})=>{
+    const room=rooms.get(socket.data.roomId),p=room?.players.get(user.id),w=WEAPONS[key];
+    if(!room||!p||!w||p.health<=0)return;
+    if(p.reloadingUntil>now())return;
+    p.reloadingUntil=now()+w.reloadMs;
+    setTimeout(()=>{if(rooms.get(room.id)!==room)return;p.ammo[key]=w.magazine;p.reloadingUntil=0;socket.emit('weapon:reloaded',{weapon:key,ammo:w.magazine});},w.reloadMs);
+    ack({ok:true});
+  });
+  socket.on('disconnect',()=>{releasePlayer(socket);if(socketsByUser.get(user.id)===socket)socketsByUser.delete(user.id);});
+});
+function makePlayer(user){return {id:user.id,username:user.username,character:null,team:null,ready:false,kills:0,deaths:0,health:100,x:0,y:0,z:0,yaw:0,ammo:{},lastShot:0,lastMove:now(),reloadingUntil:0,respawnAt:0};}
+function broadcastScores(room){io.to(room.id).emit('score:update',resultFor(room));}
+function resultFor(room){
+ const players=[...room.players.values()].sort((a,b)=>b.kills-a.kills);
+ const totals={blue:0,red:0};for(const p of players)if(p.team)totals[p.team]+=p.kills;
+ return {players:players.map(p=>({id:p.id,username:p.username,team:p.team,kills:p.kills,deaths:p.deaths,health:p.health})),totals,winner:totals.blue===totals.red?'draw':totals.blue>totals.red?'blue':'red'};
+}
+setInterval(()=>{
+ for(const room of rooms.values())if(room.status==='playing')for(const p of room.players.values()){
+  if(p.health===0&&p.respawnAt&&now()>=p.respawnAt){p.health=100;p.x=p.team==='blue'?-12:12;p.z=(Math.random()-.5)*10;p.respawnAt=0;io.to(room.id).emit('player:respawn',{id:p.id,x:p.x,z:p.z});}
+ }
+},250);
+server.listen(PORT,'0.0.0.0',()=>console.log('OPERATION: STRIKE listening on port '+PORT));
