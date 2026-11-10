@@ -193,8 +193,8 @@ io.on('connection', socket => {
 
   socket.on('rooms:refresh',()=>socket.emit('rooms:update',[...rooms.values()].filter(r=>r.status==='waiting').map(r=>({id:r.id,name:r.name,players:r.players.size,maxPlayers:r.maxPlayers,host:r.players.get(r.hostId)?.username||'Host'}))));
   socket.on('room:create', (payload={}, ack=()=>{}) => {
-    releasePlayer(socket);
     if(!allowSocketEvent(socket,'room:create',3,10000))return ack({ok:false,error:'Please wait before creating another room.'});
+    releasePlayer(socket);
     let id;do{id=Math.random().toString(36).slice(2,8).toUpperCase();}while(rooms.has(id));
     const roomName = String(payload.name || 'Combat Room').replace(/[<>]/g, '').trim().slice(0,28) || 'Combat Room';
     const requestedSize = Number(payload.maxPlayers);
@@ -209,6 +209,7 @@ io.on('connection', socket => {
     if(!allowSocketEvent(socket,'room:join',6,10000))return ack({ok:false,error:'Too many join attempts. Wait a moment.'});
     const room=rooms.get(String(id||'').toUpperCase());
     if (!room || room.status!=='waiting') return ack({ok:false,error:'Room is not available.'});
+    if(socket.data.roomId===room.id)return ack({ok:true,room:roomView(room)});
     if (room.players.size>=room.maxPlayers) return ack({ok:false,error:'Room is full.'});
     if (socket.data.roomId) releasePlayer(socket);
     room.players.set(user.id,makePlayer(user)); socket.data.roomId=room.id; socket.join(room.id);

@@ -125,9 +125,9 @@ async function applyCharacterAsset(fallbackMesh,characterId,team){
   const fitted=new THREE.Box3().setFromObject(model),center=fitted.getCenter(new THREE.Vector3());
   model.position.set(-center.x,-fitted.min.y,-center.z);
   model.traverse(node=>{if(node.isMesh){node.castShadow=true;node.receiveShadow=true;if(node.material){node.material=Array.isArray(node.material)?node.material.map(m=>m.clone()):node.material.clone();}}});
-  const band=new THREE.Mesh(new THREE.TorusGeometry(.13,.035,8,18),new THREE.MeshStandardMaterial({color:team==='blue'?0x348be8:0xe04d4d,metalness:.15,roughness:.6}));
-  band.rotation.x=Math.PI/2;band.position.set(.22,1.28,0);model.add(band);
   const pivot=new THREE.Group();pivot.add(model);pivot.position.copy(fallbackMesh.position);pivot.rotation.copy(fallbackMesh.rotation);pivot.visible=fallbackMesh.visible;
+  const band=new THREE.Mesh(new THREE.TorusGeometry(.13,.035,8,18),new THREE.MeshStandardMaterial({color:team==='blue'?0x348be8:0xe04d4d,metalness:.15,roughness:.6}));
+  band.rotation.x=Math.PI/2;band.position.set(.22,1.28,0);pivot.add(band);
   pivot.userData.targetPosition=fallbackMesh.userData.targetPosition;pivot.userData.targetYaw=fallbackMesh.userData.targetYaw;
   const mixer=new THREE.AnimationMixer(model),actions={};
   for(const clip of gltf.animations||[]){const key=clip.name.toLowerCase();actions[key]=mixer.clipAction(clip);}

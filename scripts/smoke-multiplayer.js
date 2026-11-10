@@ -41,6 +41,9 @@ function event(socket, name) {
     const created = await ack(host, 'room:create', { name: 'CI Arena', maxPlayers: 4 });
     assert.ok(created.ok, 'host should create a room');
     assert.ok((await ack(guest, 'room:join', created.room.id)).ok, 'guest should join');
+    const duplicateJoin = await ack(guest, 'room:join', created.room.id);
+    assert.ok(duplicateJoin.ok, 'joining the same room twice should be idempotent');
+    assert.equal(duplicateJoin.room.players.length, 2, 'duplicate join must not duplicate or reset membership');
 
     assert.ok((await ack(host, 'player:character', 'operator-01')).ok, 'host selects operator');
     assert.equal((await ack(guest, 'player:character', 'operator-01')).ok, false, 'operator must be exclusive');
