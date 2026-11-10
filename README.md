@@ -92,3 +92,6 @@ Open `http://localhost:3000` in two separate browsers or devices to test two acc
 
 
 The GLB loader and manifest are in place, but the manifest intentionally keeps all 15 model paths empty until the licensed model files are actually acquired. `npm run check` validates the manifest and any GLB files added later; it does not pretend missing models exist.
+
+
+The room protocol also treats repeated joins to the current room as an idempotent operation. The multiplayer regression test covers this case so it cannot reset a selected operator or silently remove the player.
