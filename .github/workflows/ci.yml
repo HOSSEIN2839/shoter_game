@@ -1,0 +1,45 @@
+name: Game prototype checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  syntax-and-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Check JavaScript syntax
+        run: npm run check
+      - name: Smoke test HTTP health and authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          export NODE_ENV=production
+          export JWT_SECRET="ci-only-secret-which-is-long-enough-123456789"
+          export PORT=4173
+          npm start > server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:4173/api/health > health.json; then break; fi
+            sleep 1
+          done
+          grep -q '"ok":true' health.json
+          curl -fsS -X POST http://127.0.0.1:4173/api/register \
+            -H 'content-type: application/json' \
+            -d '{"username":"ci_runner_01","password":"test-password-123"}' > register.json
+          grep -q '"token"' register.json
+          curl -fsS -X POST http://127.0.0.1:4173/api/login \
+            -H 'content-type: application/json' \
+            -d '{"username":"ci_runner_01","password":"test-password-123"}' > login.json
+          grep -q '"token"' login.json
