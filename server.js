@@ -25,6 +25,23 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS player_stats (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  matches INTEGER NOT NULL DEFAULT 0,
+  wins INTEGER NOT NULL DEFAULT 0,
+  kills INTEGER NOT NULL DEFAULT 0,
+  deaths INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS match_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  room_code TEXT NOT NULL,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  team TEXT NOT NULL,
+  kills INTEGER NOT NULL,
+  deaths INTEGER NOT NULL,
+  result TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 `);
 
 const app = express();
@@ -33,7 +50,19 @@ const io = new Server(server, { cors: { origin: false }, pingInterval: 15000, pi
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: '16kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
-app.get('/api/health', (_req, res) => res.json({ ok: true, game: 'OPERATION: STRIKE', version: '0.2.0' }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, game: 'OPERATION: STRIKE', version: '0.3.0' }));
+function requireAuth(req,res,next){
+  try{const token=String(req.headers.authorization||'').replace(/^Bearer\\s+/i,'');if(!token)throw new Error('missing');req.user=jwt.verify(token,SECRET);next();}
+  catch{return res.status(401).json({error:'Please sign in again.'});}
+}
+app.get('/api/me/stats',requireAuth,(req,res)=>{
+ const stats=db.prepare('SELECT matches,wins,kills,deaths FROM player_stats WHERE user_id=?').get(req.user.id)||{matches:0,wins:0,kills:0,deaths:0};
+ res.json({username:req.user.username,...stats,winRate:stats.matches?Math.round(stats.wins/stats.matches*100):0});
+});
+app.get('/api/leaderboard',(_req,res)=>{
+ const rows=db.prepare(`SELECT u.username,COALESCE(s.matches,0) matches,COALESCE(s.wins,0) wins,COALESCE(s.kills,0) kills,COALESCE(s.deaths,0) deaths FROM users u LEFT JOIN player_stats s ON s.user_id=u.id ORDER BY wins DESC,kills DESC,deaths ASC LIMIT 20`).all();
+ res.json({players:rows});
+});
 
 const authWindows = new Map();
 function authRateLimit(req, res, next) {
@@ -98,6 +127,17 @@ const COLLIDERS = [
   [-11,-8,5.5,1.4],[11,8,5.5,1.4],[-12,9,5.5,1.4],[12,-9,5.5,1.4]
 ];
 function isBlocked(x,z){return COLLIDERS.some(([cx,cz,w,d])=>Math.abs(x-cx)<w/2+.58&&Math.abs(z-cz)<d/2+.58);}
+function segmentHitsBox(x1,z1,x2,z2,cx,cz,w,d,pad=.58){
+ const minX=cx-w/2-pad,maxX=cx+w/2+pad,minZ=cz-d/2-pad,maxZ=cz+d/2+pad;
+ const dx=x2-x1,dz=z2-z1;let tMin=0,tMax=1;
+ for(const [origin,delta,min,max] of [[x1,dx,minX,maxX],[z1,dz,minZ,maxZ]]){
+  if(Math.abs(delta)<1e-9){if(origin<min||origin>max)return false;continue;}
+  let a=(min-origin)/delta,b=(max-origin)/delta;if(a>b)[a,b]=[b,a];tMin=Math.max(tMin,a);tMax=Math.min(tMax,b);if(tMin>tMax)return false;
+ }
+ return tMax>=0&&tMin<=1;
+}
+function pathBlocked(x1,z1,x2,z2){return COLLIDERS.some(([cx,cz,w,d])=>segmentHitsBox(x1,z1,x2,z2,cx,cz,w,d));}
+function hasLineOfSight(shooter,target){return !COLLIDERS.some(([cx,cz,w,d])=>segmentHitsBox(shooter.x,shooter.z,target.x,target.z,cx,cz,w,d,0));}
 const rooms = new Map();
 const socketsByUser = new Map();
 const now = () => Date.now();
@@ -200,12 +240,12 @@ io.on('connection', socket => {
     const blueCount=[...room.players.values()].filter(p=>p.team==='blue').length;
     const redCount=room.players.size-blueCount;
     if(Math.abs(blueCount-redCount)>1) return ack({ok:false,error:'Teams must be balanced before the match starts.'});
-    room.status='playing'; room.endsAt=now()+room.duration*1000;
+    room.status='playing'; room.endsAt=now()+room.duration*1000;room.participants=new Map(room.players);
     for(const p of room.players.values()){p.health=100;p.kills=0;p.deaths=0;p.x=p.team==='blue'?-12:12;p.z=(Math.random()-.5)*10;p.y=0;p.ready=true;p.ammo=Object.fromEntries(Object.entries(WEAPONS).map(([key,w])=>[key,w.magazine]));p.reloadingUntil=0;p.respawnAt=0;}
     room.timer=setInterval(()=>{
       const remaining=Math.max(0,Math.ceil((room.endsAt-now())/1000));
       io.to(room.id).emit('game:clock',{remaining});
-      if(remaining<=0){clearInterval(room.timer);room.status='finished';io.to(room.id).emit('game:finished',resultFor(room));broadcastRoom(room);sendLobby();}
+      if(remaining<=0){clearInterval(room.timer);room.status='finished';persistMatch(room);io.to(room.id).emit('game:finished',resultFor(room));broadcastRoom(room);sendLobby();}
     },1000);
     ack({ok:true}); io.to(room.id).emit('game:start',{room:roomView(room),weapons:WEAPONS,remaining:room.duration});
   });
@@ -215,8 +255,9 @@ io.on('connection', socket => {
     const x=Number(input.x),z=Number(input.z),yaw=Number(input.yaw);
     if(![x,z,yaw].every(Number.isFinite))return;
     const dt=Math.min(0.25,Math.max(.02,(now()-(p.lastMove||now()))/1000));
-    if(Math.abs(x)>31||Math.abs(z)>31||Math.abs(yaw)>1000||isBlocked(x,z))return;
+    if(Math.abs(x)>31||Math.abs(z)>31||Math.abs(yaw)>1000||isBlocked(x,z)||pathBlocked(p.x,p.z,x,z))return;
     const max=8.5*dt+0.55;
+    for(const other of room.players.values())if(other.id!==p.id&&other.health>0&&Math.hypot(x-other.x,z-other.z)<0.9)return;
     const dist=Math.hypot(x-p.x,z-p.z);
     if(dist>max)return;
     p.x=x;p.z=z;p.yaw=yaw;p.lastMove=now();
@@ -242,7 +283,7 @@ io.on('connection', socket => {
       if(along<=0||along>weapon.range)continue;
       const perpendicular=Math.sqrt(Math.max(0,dx*dx+dy*dy+dz*dz-along*along));
       const radius=key==='shotgun'?1.5:.75;
-      if(perpendicular<radius&&along<best){best=along;target=p;}
+      if(perpendicular<radius&&along<best&&hasLineOfSight(shooter,p)){best=along;target=p;}
     }
     if(target){
       const damage=key==='shotgun'?weapon.damage*5:weapon.damage;
@@ -265,8 +306,16 @@ io.on('connection', socket => {
 });
 function makePlayer(user){return {id:user.id,username:user.username,character:null,team:null,ready:false,kills:0,deaths:0,health:100,x:0,y:0,z:0,yaw:0,ammo:{},lastShot:0,lastMove:now(),reloadingUntil:0,respawnAt:0};}
 function broadcastScores(room){io.to(room.id).emit('score:update',resultFor(room));}
+function persistMatch(room){
+ if(room.statsSaved)return;room.statsSaved=true;
+ const participants=[...(room.participants||room.players).values()];
+ const totals={blue:0,red:0};for(const p of participants)if(p.team)totals[p.team]+=p.kills;
+ const winner=totals.blue===totals.red?'draw':totals.blue>totals.red?'blue':'red';
+ const save=db.transaction(()=>{for(const p of participants){db.prepare(`INSERT INTO player_stats(user_id,matches,wins,kills,deaths) VALUES(?,1,?,?,?) ON CONFLICT(user_id) DO UPDATE SET matches=matches+1,wins=wins+excluded.wins,kills=kills+excluded.kills,deaths=deaths+excluded.deaths`).run(p.id,p.team===winner&&winner!=='draw'?1:0,p.kills,p.deaths);db.prepare('INSERT INTO match_history(room_code,user_id,team,kills,deaths,result) VALUES(?,?,?,?,?,?)').run(room.id,p.id,p.team||'none',p.kills,p.deaths,p.team===winner?'win':winner==='draw'?'draw':'loss');}});
+ save();
+}
 function resultFor(room){
- const players=[...room.players.values()].sort((a,b)=>b.kills-a.kills);
+ const players=[...(room.status==='finished'&&room.participants?room.participants:room.players).values()].sort((a,b)=>b.kills-a.kills);
  const totals={blue:0,red:0};for(const p of players)if(p.team)totals[p.team]+=p.kills;
  return {players:players.map(p=>({id:p.id,username:p.username,team:p.team,kills:p.kills,deaths:p.deaths,health:p.health})),totals,winner:totals.blue===totals.red?'draw':totals.blue>totals.red?'blue':'red'};
 }
