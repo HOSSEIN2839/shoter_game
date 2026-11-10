@@ -47,7 +47,7 @@ function renderRoom(room){
  show('roomScreen');$('roomTitle').textContent=room.name.toUpperCase();$('roomMeta').textContent=room.players.length+' / '+room.maxPlayers+' OPERATORS · '+room.status.toUpperCase();
  const me=room.players.find(p=>p.id===user.id);selectedCharacter=me?.character||null;selectedTeam=me?.team||null;isReady=!!me?.ready;
  const occupied=new Set(room.players.filter(p=>p.id!==user.id).map(p=>p.character));
- $('characterGrid').innerHTML=characters.map(c=>'<button class="character-card '+(selectedCharacter===c.id?'selected ':'')+(occupied.has(c.id)?'occupied':'')+'" data-char="'+c.id+'" '+(!c.unlocked||occupied.has(c.id)?'disabled':'')+'><div class="character-art" style="--c:'+c.color+'"></div><strong>'+c.name+'</strong><small>'+(occupied.has(c.id)?'IN USE':c.unlocked?'AVAILABLE':'🔒 LOCKED')+'</small></button>').join('');
+ $('characterGrid').innerHTML=characters.map((c,i)=>'<button class="character-card '+(selectedCharacter===c.id?'selected ':'')+(occupied.has(c.id)?'occupied':'')+'" data-char="'+c.id+'" '+(!c.unlocked||occupied.has(c.id)?'disabled':'')+'><div class="character-art style-'+(i%5)+'" style="--c:'+c.color+'"><i></i><b></b></div><strong>'+c.name+'</strong><small>'+(occupied.has(c.id)?'IN USE':c.unlocked?'AVAILABLE':'🔒 LOCKED')+'</small></button>').join('');
  $('characterGrid').querySelectorAll('[data-char]').forEach(b=>b.onclick=()=>socket.emit('player:character',b.dataset.char,res=>{if(!res.ok)message('roomMessage',res.error);else message('roomMessage','Operator selected.',true);}));
  document.querySelectorAll('[data-team]').forEach(b=>b.classList.toggle('active',b.dataset.team===selectedTeam));
  for(const team of ['blue','red']){$(team+'Players').innerHTML=room.players.filter(p=>p.team===team).map(p=>'<div class="player-row"><span>'+escapeHtml(p.username)+'</span><small>'+(p.ready?'READY':'NOT READY')+'</small></div>').join('')||'<p class="tiny muted">No players yet</p>';}
@@ -120,11 +120,17 @@ function makeOperator(_teamColor,characterId,team){
  for(const side of [-1,1]){part(new THREE.CapsuleGeometry(.14,.55,4,7),uniform,side*.19,.42,0);part(new THREE.BoxGeometry(.2,.16,.25),0x343b39,side*.19,.39,-.12);part(new THREE.BoxGeometry(.22,.16,.36),dark,side*.19,.11,-.07);}
  part(new THREE.CylinderGeometry(.11,.12,.18,8),skin,0,1.55,0);
  part(new THREE.SphereGeometry(.205,12,10),skin,0,1.76,0);
- part(new THREE.SphereGeometry(.235,12,9,0,Math.PI*2,0,Math.PI/2),dark,0,1.86,0);
- part(new THREE.BoxGeometry(.34,.055,.19),0x303a3c,0,1.82,-.12);
+ if(index%5===0||index%5===3){part(new THREE.SphereGeometry(.235,12,9,0,Math.PI*2,0,Math.PI/2),dark,0,1.86,0);part(new THREE.BoxGeometry(.34,.055,.19),0x303a3c,0,1.82,-.12);}
+ else if(index%5===1){const beret=part(new THREE.SphereGeometry(.24,10,7),0x39443c,0,1.91,0);beret.scale.set(1.15,.38,1);part(new THREE.BoxGeometry(.08,.035,.08),0xb08a4e,.13,1.95,-.04);}
+ else if(index%5===2){part(new THREE.BoxGeometry(.38,.11,.28),0x354039,0,1.91,0);part(new THREE.BoxGeometry(.28,.035,.22),0x222a2b,0,1.86,-.08);}
+ else{part(new THREE.BoxGeometry(.42,.07,.3),0x414a45,0,1.9,0);part(new THREE.SphereGeometry(.08,8,6),0x222a2b,0,1.82,-.17);}
+ if(index%3===0)part(new THREE.BoxGeometry(.29,.13,.12),0x303b39,0,1.68,-.15);
+ if(index%5===3)part(new THREE.BoxGeometry(.38,.055,.08),0xb08a4e,0,1.72,-.18);
  part(new THREE.BoxGeometry(.12,.055,.09),0xb08a4e,0,1.96,-.02);
  for(const side of [-1,1])part(new THREE.CylinderGeometry(.045,.045,.06,8),0x252a2b,side*.21,1.76,0,Math.PI/2,0,0);
- part(new THREE.BoxGeometry(.38,.55,.2),0x343f39,0,1.13,.23);
+ const pack=part(new THREE.BoxGeometry(index%2===0?.42:.32,index%3===0?.62:.48,.2),0x343f39,0,1.13,.23);
+ if(index%4===1)part(new THREE.BoxGeometry(.12,.25,.14),0x6b604b,-.25,1.05,.08);
+ if(index%4===2)part(new THREE.BoxGeometry(.12,.18,.14),0x6b604b,.25,1.08,.08);
  part(new THREE.CylinderGeometry(.012,.012,.3,5),0x242a2a,.16,1.65,.25);
  const teamColor=team==='blue'?0x368ce8:team==='red'?0xd84c55:0xaaaaaa;
  part(new THREE.BoxGeometry(.14,.13,.28),teamColor,.47,1.28,0);
