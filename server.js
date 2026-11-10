@@ -11,6 +11,7 @@ const { Server } = require('socket.io');
 
 const PORT = Number(process.env.PORT || 3000);
 const SECRET = process.env.JWT_SECRET || 'development-only-change-this-secret-before-deploying';
+if (process.env.NODE_ENV === 'production' && SECRET === 'development-only-change-this-secret-before-deploying') throw new Error('Refusing to start in production without a custom JWT_SECRET.');
 if (SECRET.length < 32) console.warn('WARNING: Set a strong JWT_SECRET before public deployment.');
 
 const dataDir = path.join(__dirname, 'data');
@@ -32,12 +33,25 @@ const io = new Server(server, { cors: { origin: false }, pingInterval: 15000, pi
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: '16kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
-app.get('/api/health', (_req, res) => res.json({ ok: true, game: 'OPERATION: STRIKE' }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, game: 'OPERATION: STRIKE', version: '0.2.0' }));
+
+const authWindows = new Map();
+function authRateLimit(req, res, next) {
+  const key = req.ip || req.socket.remoteAddress || 'unknown';
+  const t = Date.now();
+  let entry = authWindows.get(key);
+  if (!entry || t - entry.startedAt > 15 * 60 * 1000) entry = { startedAt: t, count: 0 };
+  entry.count++;
+  authWindows.set(key, entry);
+  if (entry.count > 20) return res.status(429).json({ error: 'Too many sign-in attempts. Try again in 15 minutes.' });
+  next();
+}
+setInterval(() => { const t=Date.now(); for (const [key,value] of authWindows) if (t-value.startedAt>15*60*1000) authWindows.delete(key); }, 5*60*1000).unref();
 
 function tokenFor(user) {
   return jwt.sign({ id: user.id, username: user.username }, SECRET, { expiresIn: '7d' });
 }
-app.post('/api/register', async (req, res) => {
+app.post('/api/register', authRateLimit, async (req, res) => {
   const username = String(req.body?.username || '').trim();
   const password = String(req.body?.password || '');
   if (!/^[a-zA-Z0-9_]{3,18}$/.test(username))
@@ -54,9 +68,11 @@ app.post('/api/register', async (req, res) => {
     console.error(error); res.status(500).json({ error: 'Could not create account.' });
   }
 });
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', authRateLimit, async (req, res) => {
   const username = String(req.body?.username || '').trim();
   const password = String(req.body?.password || '');
+  if (!/^[a-zA-Z0-9_]{3,18}$/.test(username) || password.length < 8 || password.length > 72)
+    return res.status(400).json({ error: 'Enter a valid username and a password of 8–72 characters.' });
   const row = db.prepare('SELECT * FROM users WHERE username = ? COLLATE NOCASE').get(username);
   if (!row || !(await bcrypt.compare(password, row.password_hash)))
     return res.status(401).json({ error: 'Incorrect username or password.' });
@@ -115,6 +131,8 @@ io.use((socket, next) => {
 });
 io.on('connection', socket => {
   const user = socket.data.user;
+  const previousSocket = socketsByUser.get(user.id);
+  if (previousSocket && previousSocket.id !== socket.id) previousSocket.disconnect(true);
   socketsByUser.set(user.id, socket);
   socket.emit('characters:list', CHARACTERS);
   socket.emit('weapons:list', WEAPONS);
@@ -124,8 +142,11 @@ io.on('connection', socket => {
   socket.on('room:create', (payload={}, ack=()=>{}) => {
     releasePlayer(socket);
     const id = Math.random().toString(36).slice(2,8).toUpperCase();
-    const room = { id, name:String(payload.name||'Combat Room').slice(0,28), hostId:user.id, status:'waiting',
-      duration:600, maxPlayers:Math.max(2,Math.min(20,Number(payload.maxPlayers)||10)), players:new Map(), createdAt:now(), timer:null, endsAt:null };
+    const roomName = String(payload.name || 'Combat Room').replace(/[<>]/g, '').trim().slice(0,28) || 'Combat Room';
+    const requestedSize = Number(payload.maxPlayers);
+    const maxPlayers = Number.isFinite(requestedSize) ? Math.max(2, Math.min(20, Math.floor(requestedSize))) : 10;
+    const room = { id, name:roomName, hostId:user.id, status:'waiting',
+      duration:600, maxPlayers, players:new Map(), createdAt:now(), timer:null, endsAt:null };
     room.players.set(user.id, makePlayer(user));
     rooms.set(id,room); socket.data.roomId=id; socket.join(id);
     ack({ok:true,room:roomView(room)}); broadcastRoom(room); sendLobby();
@@ -155,6 +176,7 @@ io.on('connection', socket => {
     const count=[...room.players.values()].filter(p=>p.team===team&&p.id!==user.id).length;
     const other=[...room.players.values()].filter(p=>p.team!==team&&p.id!==user.id).length;
     if(count>=Math.ceil(room.maxPlayers/2)) return ack({ok:false,error:'That team is full. Choose the other team.'});
+    if(count>other) return ack({ok:false,error:'Choose the smaller team to keep the match balanced.'});
     player.team=team; player.ready=false; ack({ok:true}); broadcastRoom(room);
   });
   socket.on('player:ready',(ready,ack=()=>{})=>{
@@ -169,8 +191,11 @@ io.on('connection', socket => {
     if(room.players.size<2) return ack({ok:false,error:'At least 2 players are required.'});
     if([...room.players.values()].some(p=>!p.ready||!p.character||!p.team)) return ack({ok:false,error:'Every player must choose an operator, join a team and be ready.'});
     if(new Set([...room.players.values()].map(p=>p.team)).size<2) return ack({ok:false,error:'Both teams need players.'});
+    const blueCount=[...room.players.values()].filter(p=>p.team==='blue').length;
+    const redCount=room.players.size-blueCount;
+    if(Math.abs(blueCount-redCount)>1) return ack({ok:false,error:'Teams must be balanced before the match starts.'});
     room.status='playing'; room.endsAt=now()+room.duration*1000;
-    for(const p of room.players.values()){p.health=100;p.kills=0;p.deaths=0;p.x=p.team==='blue'?-12:12;p.z=(Math.random()-.5)*10;p.y=0;p.ready=true;}
+    for(const p of room.players.values()){p.health=100;p.kills=0;p.deaths=0;p.x=p.team==='blue'?-12:12;p.z=(Math.random()-.5)*10;p.y=0;p.ready=true;p.ammo=Object.fromEntries(Object.entries(WEAPONS).map(([key,w])=>[key,w.magazine]));p.reloadingUntil=0;p.respawnAt=0;}
     room.timer=setInterval(()=>{
       const remaining=Math.max(0,Math.ceil((room.endsAt-now())/1000));
       io.to(room.id).emit('game:clock',{remaining});
@@ -184,7 +209,8 @@ io.on('connection', socket => {
     const x=Number(input.x),z=Number(input.z),yaw=Number(input.yaw);
     if(![x,z,yaw].every(Number.isFinite))return;
     const dt=Math.min(0.25,Math.max(.02,(now()-(p.lastMove||now()))/1000));
-    const max=9*dt+1.2;
+    if(Math.abs(x)>31||Math.abs(z)>31||Math.abs(yaw)>1000)return;
+    const max=8.5*dt+0.55;
     const dist=Math.hypot(x-p.x,z-p.z);
     if(dist>max)return;
     p.x=x;p.z=z;p.yaw=yaw;p.lastMove=now();
@@ -194,13 +220,13 @@ io.on('connection', socket => {
     const room=rooms.get(socket.data.roomId), shooter=room?.players.get(user.id);
     if(!room||room.status!=='playing'||!shooter||shooter.health<=0)return;
     const key=WEAPONS[input.weapon]?input.weapon:'rifle', weapon=WEAPONS[key], t=now();
+    const yaw=Number(input.yaw),pitch=Number(input.pitch);
+    if(!Number.isFinite(yaw)||!Number.isFinite(pitch)||Math.abs(yaw)>1000||Math.abs(pitch)>1.25) return ack({ok:false,error:'Invalid aim input.'});
     if(shooter.reloadingUntil>t)return ack({ok:false,error:'Reloading.'});
-    if(t-(shooter.lastShot||0)<60000/weapon.rpm*.85)return;
+    if(t-(shooter.lastShot||0)<60000/weapon.rpm*.85)return ack({ok:false,error:'Fire rate limited.'});
     if(shooter.ammo[key]===undefined)shooter.ammo[key]=weapon.magazine;
     if(shooter.ammo[key]<=0)return ack({ok:false,error:'Reload required.'});
     shooter.lastShot=t;shooter.ammo[key]--;
-    const yaw=Number(input.yaw),pitch=Number(input.pitch);
-    if(!Number.isFinite(yaw)||!Number.isFinite(pitch))return;
     const dir={x:-Math.sin(yaw)*Math.cos(pitch),y:Math.sin(pitch),z:-Math.cos(yaw)*Math.cos(pitch)};
     let target=null,best=weapon.range;
     for(const p of room.players.values()){
@@ -226,7 +252,7 @@ io.on('connection', socket => {
     if(!room||!p||!w||p.health<=0)return;
     if(p.reloadingUntil>now())return;
     p.reloadingUntil=now()+w.reloadMs;
-    setTimeout(()=>{if(rooms.get(room.id)!==room)return;p.ammo[key]=w.magazine;p.reloadingUntil=0;socket.emit('weapon:reloaded',{weapon:key,ammo:w.magazine});},w.reloadMs);
+    setTimeout(()=>{if(rooms.get(room.id)!==room||room.status!=='playing'||room.players.get(user.id)!==p||!socket.connected)return;p.ammo[key]=w.magazine;p.reloadingUntil=0;socket.emit('weapon:reloaded',{weapon:key,ammo:w.magazine});},w.reloadMs);
     ack({ok:true});
   });
   socket.on('disconnect',()=>{releasePlayer(socket);if(socketsByUser.get(user.id)===socket)socketsByUser.delete(user.id);});
