@@ -174,7 +174,7 @@ window.addEventListener('keydown',e=>{if(e.code==='Tab'&&gameActive){e.preventDe
 window.addEventListener('keyup',e=>{keys[e.code]=false;if(e.code==='Tab')$('scoreboard').classList.add('hidden');});
 $('gameCanvas').addEventListener('click',()=>{if(renderer&&gameActive)renderer.domElement.requestPointerLock();});
 document.addEventListener('pointerlockchange',()=>{if(document.pointerLockElement!==renderer?.domElement&&gameActive)$('gameNotice').textContent='CLICK TO RESUME';});
-document.addEventListener('mousemove',e=>{if(document.pointerLockElement===renderer?.domElement){yaw-=e.movementX*.0022;pitch=THREE.MathUtils.clamp(pitch-e.movementY*.0022,-1.2,1.2);}});
+document.addEventListener('mousemove',e=>{if(document.pointerLockElement===renderer?.domElement){yaw=THREE.MathUtils.euclideanModulo(yaw-e.movementX*.0022+Math.PI,Math.PI*2)-Math.PI;pitch=THREE.MathUtils.clamp(pitch-e.movementY*.0022,-1.2,1.2);}});
 document.addEventListener('mousedown',e=>{if(e.button===0&&gameActive){if(weapons[weaponKey]?.automatic)fireHeld=true;else fire();}if(e.button===2&&gameActive&&weaponKey==='sniper')setScope(true);});
 document.addEventListener('mouseup',e=>{if(e.button===0)fireHeld=false;if(e.button===2&&sniperScoped)setScope(false);});
 window.addEventListener('blur',()=>{fireHeld=false;keys={};$('scoreboard').classList.add('hidden');if(sniperScoped)setScope(false);});
