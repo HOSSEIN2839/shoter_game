@@ -7,3 +7,7 @@
 .scope-overlay{display:none;position:absolute;inset:0;z-index:4;pointer-events:none;background:radial-gradient(circle at center,transparent 0 22%,rgba(0,0,0,.9) 23% 100%)}
 .scope-overlay:before,.scope-overlay:after{content:'';position:absolute;background:rgba(20,20,20,.9)}.scope-overlay:before{width:1px;height:100%;left:50%;top:0}.scope-overlay:after{height:1px;width:100%;top:50%;left:0}
 #gameScreen.scoped .scope-overlay{display:block}#gameScreen.scoped .crosshair{opacity:0}
+
+.kill-feed{position:absolute;top:128px;right:18px;z-index:6;display:flex;flex-direction:column;gap:5px;align-items:flex-end;pointer-events:none}
+.kill-feed-item{padding:7px 11px;background:rgba(10,15,18,.78);border-right:2px solid #d8a44d;color:#f2eeee;font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:1px;animation:feed-in .18s ease-out}
+@keyframes feed-in{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:translateX(0)}}
