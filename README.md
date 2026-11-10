@@ -89,3 +89,6 @@ npm start
 Open `http://localhost:3000` in two separate browsers or devices to test two accounts. The current match state and rooms are in memory; only account credentials persist in SQLite. Use HTTPS/reverse proxy, backups, monitoring and a production-grade anti-cheat review before public launch.
 
 **Not yet production complete:** the operators are procedural meshes, not imported GLB models; the arena is still procedural; physics/collision, animation, sound, persistent match statistics, lag compensation, authoritative movement simulation and load testing remain outstanding. The browser prototype has not been represented as tested until CI and a real multiplayer session pass.
+
+
+The GLB loader and manifest are in place, but the manifest intentionally keeps all 15 model paths empty until the licensed model files are actually acquired. `npm run check` validates the manifest and any GLB files added later; it does not pretend missing models exist.
