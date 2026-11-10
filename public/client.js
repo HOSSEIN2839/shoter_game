@@ -69,6 +69,35 @@ function initThree(){
  const mat=(color)=>new THREE.MeshStandardMaterial({color,roughness:.85});
  function block(x,z,w,h,d,color){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat(color));m.position.set(x,h/2,z);m.castShadow=true;m.receiveShadow=true;scene.add(m);}
  // Compact training-yard arena: perimeter walls, central cover, containers and watch towers.
+ // Tactical dressing: concrete lanes, container ribs, barricades and perimeter floodlights.
+ const detail=(x,y,z,w,h,d,color,roughness=.82)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshStandardMaterial({color,roughness}));m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;scene.add(m);return m;};
+ // Asphalt firing lanes and painted lane markings.
+ detail(0,.012,0,12,.018,66,0x555b59);
+ for(let z=-29;z<=29;z+=6){detail(-5.15,.025,z,.12,.025,2.4,0xc7b77c);detail(5.15,.025,z,.12,.025,2.4,0xc7b77c);}
+ // Corrugated container faces and corner posts.
+ for(const [x,z,w,d,color] of [[-18,-16,8,5,0x536d70],[17,-15,7,6,0x6e5948],[-18,16,7,5,0x596b58],[18,17,8,5,0x59616b]]){
+   for(let i=0;i<Math.floor(w/.65);i++)detail(x-w/2+.35+i*.65,1.52,z+d/2+.035,.045,2.9,.07,0x9b9b88);
+   for(const sx of [-1,1])for(const sz of [-1,1])detail(x+sx*(w/2-.12),1.5,z+sz*(d/2-.12),.24,3,.24,0x343c3d);
+ }
+ // Low concrete jersey barriers create readable cover without blocking the whole arena.
+ for(const [x,z,rot] of [[-11,-8,.18],[11,8,-.18],[-12,9,-.2],[12,-9,.2]]){
+   const b=detail(x,.58,z,5.5,1.16,.72,0x777b73);b.rotation.y=rot;
+   for(let i=-2;i<=2;i++)detail(x+i*1.05,1.18,z,.07,.08,.76,0xaaa99a);
+ }
+ // Sandbag positions near the center and team approaches.
+ for(const [x,z] of [[-4,-12],[4,12],[-22,4],[22,-4]]){
+   for(let row=0;row<2;row++)for(let i=0;i<3;i++){
+     const bag=new THREE.Mesh(new THREE.CapsuleGeometry(.32,.62,3,6),mat(0x8a8063));
+     bag.rotation.z=Math.PI/2;bag.position.set(x+(i-1)*.62+(row%2)*.2,.34+row*.38,z);bag.castShadow=true;scene.add(bag);
+   }
+ }
+ // Watchtower frames and bright lamps at the four corners.
+ for(const [x,z] of [[-27,-27],[27,-27],[-27,27],[27,27]]){
+   for(const sx of [-1,1])for(const sz of [-1,1])detail(x+sx*.9,2.6,z+sz*.9,.13,5.2,.13,0x41494a);
+   detail(x,5.15,z,2.2,.18,2.2,0x41494a);
+   const lamp=new THREE.PointLight(0xffd99a,22,15,2);lamp.position.set(x,5.45,z);scene.add(lamp);
+   detail(x,5.5,z,.42,.18,.42,0xffd99a,.35);
+ }
  block(0,-34,70,5,2,0x59615e);block(0,34,70,5,2,0x59615e);block(-34,0,2,5,70,0x59615e);block(34,0,2,5,70,0x59615e);
  [[-18,-16,8,3,5],[17,-15,7,3,6],[-18,16,7,3,5],[18,17,8,3,5],[0,-21,10,2.5,3],[0,21,10,2.5,3],[-8,0,3,2.3,8],[8,0,3,2.3,8],[-25,0,3,4,3],[25,0,3,4,3]].forEach((a,i)=>block(...a,i%2?0x68746c:0x7d6650));
  for(let i=0;i<12;i++){const x=(i%4)*15-22,z=Math.floor(i/4)*18-18;const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.18,.3,2.8,7),mat(0x5c4632));trunk.position.set(x,1.4,z);scene.add(trunk);const crown=new THREE.Mesh(new THREE.ConeGeometry(1.4,3.6,7),mat(0x3e5941));crown.position.set(x,4,z);scene.add(crown);}
