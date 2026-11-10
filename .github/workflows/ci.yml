@@ -43,3 +43,4 @@ jobs:
             -H 'content-type: application/json' \
             -d '{"username":"ci_runner_01","password":"test-password-123"}' > login.json
           grep -q '"token"' login.json
+          npm run test:multiplayer
