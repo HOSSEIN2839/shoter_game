@@ -50,7 +50,7 @@ Never deploy with the fallback JWT secret. Use HTTPS and a persistent writable d
 ## Current prototype update (build 0.4.0)
 
 Recent improvements:
-- Fifteen selectable operator identities with varied procedural tactical gear, headwear, uniform palettes and blue/red team armbands (still procedural meshes, not imported GLBs).
+- Fifteen selectable operator identities with varied procedural tactical gear, headwear, uniform palettes and blue/red team armbands; manifest-driven GLB loading is integrated with safe skinned-mesh cloning, automatic scale normalization, team armbands, idle/walk/run animation playback and procedural fallback. No third-party GLB binaries are committed yet.
 - First-person procedural weapon models, muzzle flashes, hold-to-fire automatic weapons and a hold-right-click sniper scope.
 - Live minimap player markers, compass heading and elimination feed.
 - Arena obstacle collision on both client and server.

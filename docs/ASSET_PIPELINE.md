@@ -8,17 +8,18 @@ The game still uses procedural operator meshes as a fallback. No downloaded char
 
 The target is 15 distinct, fully clothed, non-explicit tactical operators with readable silhouettes and a consistent stylized-realistic art direction. Avoid underwear, swimwear, revealing outfits, joke costumes, and unrelated fantasy gear.
 
-### Preferred character source: Quaternius Ultimate Modular Men Pack
+### Character sources to combine: Quaternius modular packs
 
 - Official pack page: https://quaternius.com/packs/ultimatemodularcharacters.html
 - The official page identifies **11 different characters**, **24 animations**, modular character parts, glTF/FBX/OBJ/Blend formats, and a **CC0** licence.
 - The page states the assets are free for personal and commercial projects.
 - This is an older February 2022 pack, so its pack-specific CC0 grant is distinct from newer Quaternius packs and the newer QAL terms. Keep the exact page and the included licence file with the source record.
 
-Eleven distinct characters are a strong starting point, but the target is still 15. Add four additional compatible characters/variants only after verifying their pack-specific licences and humanoid rig compatibility. The pack is stylized rather than photorealistic; inspect its actual models before deciding whether the art direction fits the final FPS.
+Men pack: 11 distinct characters and 24 animations. Women pack: 10 distinct characters and 24 animations, including a humanoid rig version. Together they provide 21 distinct starting models, enough to choose 15 operators. The pack includes casual/fantasy-adjacent silhouettes as well as SWAT, so select the tactical-looking models and use modular parts to make the rest consistent. Inspect the actual files before final selection.
 
 ### Other Quaternius candidates
 
+- Ultimate Modular Women Pack: https://quaternius.com/packs/ultimatemodularwomen.html
 - Universal Base Characters: https://quaternius.itch.io/universal-base-characters
 - Modular Character Outfits (Fantasy): https://quaternius.com/
 - Universal Animation Library: https://quaternius.itch.io/universal-animation-library
@@ -36,6 +37,12 @@ Current licence information: https://quaternius.com/license.html
 - Kenney Nature Kit: https://kenney.nl/assets/nature-kit
 
 Kenney identifies these asset pages as CC0. The style is more toy-like than tactical, so these are fallback/prototype sources rather than the preferred final operator art direction. Preserve each downloaded pack's included License.txt.
+
+## Runtime GLB loader
+
+The browser now has a manifest-driven GLTFLoader pipeline. It clones skinned meshes safely, normalizes model height to 1.8 units, adds a blue/red team armband, and plays available idle/walk/run clips. If a file is absent, malformed, or fails to load, the procedural operator remains visible. The manifest is `public/assets/characters/manifest.json`; only local `/assets/characters/*.glb` paths are accepted.
+
+No third-party GLB binaries have been copied into this repository yet. The loader is ready, but the model slots stay `null` until the exact pack files have been downloaded, inspected, and checked against their licence. This avoids shipping invented or unverified binary assets.
 
 ## Required model layout
 
