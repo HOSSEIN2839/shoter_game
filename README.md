@@ -50,11 +50,13 @@ Never deploy with the fallback JWT secret. Use HTTPS and a persistent writable d
 ## Current prototype update (build 0.2.0)
 
 Recent improvements:
-- More detailed procedural tactical operators with separate uniform palettes and blue/red team armbands.
-- Live minimap player markers and a compass heading.
-- Hold-to-fire for automatic weapons and hold-right-click sniper scope.
+- Fifteen selectable operator identities with varied procedural tactical gear, headwear, uniform palettes and blue/red team armbands (still procedural meshes, not imported GLBs).
+- First-person procedural weapon models, muzzle flashes, hold-to-fire automatic weapons and a hold-right-click sniper scope.
+- Live minimap player markers, compass heading and elimination feed.
+- Arena obstacle collision on both client and server.
 - Per-weapon ammunition is retained when switching weapons and reloads update the correct weapon.
-- Server-side input bounds, fire-rate/aim validation, authentication throttling, one active socket per account, balanced team selection, and a production JWT secret guard.
+- Server-side input bounds, obstacle checks, fire-rate/aim validation, authentication throttling, one active socket per account, balanced team selection, and a production JWT secret guard.
+- GitHub Actions syntax, HTTP/authentication and two-player Socket.IO smoke tests (room creation/join, character exclusivity, team balance, ready/start, firing and reload).
 - Training arena detail additions are documented in `docs/ASSET_PIPELINE.md`.
 
 ## Run locally
